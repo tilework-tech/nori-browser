@@ -1,0 +1,128 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #252526;
+  color: #cccccc;
+}
+
+#app {
+  display: flex;
+  height: 100%;
+}
+
+#sidebar {
+  width: 400px;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  background: #1e1e1e;
+}
+
+#sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid #333;
+  background: #252526;
+  height: 48px;
+}
+
+#cdp-info {
+  font-size: 10px;
+  font-weight: 400;
+  color: #666;
+  font-family: monospace;
+  text-transform: none;
+}
+
+#terminal-container {
+  flex: 1;
+  padding: 4px;
+  overflow: hidden;
+}
+
+#divider {
+  width: 4px;
+  cursor: col-resize;
+  background: #333;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+#divider:hover,
+#divider:active {
+  background: #007acc;
+}
+
+#browser-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  background: #333333;
+  border-bottom: 1px solid #444;
+  height: 48px;
+  flex-shrink: 0;
+}
+
+#toolbar button {
+  background: #444;
+  border: 1px solid #555;
+  color: #ccc;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+#toolbar button:hover {
+  background: #555;
+  color: #fff;
+}
+
+#toolbar button:active {
+  background: #666;
+}
+
+#url-bar {
+  flex: 1;
+  padding: 6px 14px;
+  border: 1px solid #555;
+  border-radius: 20px;
+  background: #252526;
+  color: #d4d4d4;
+  font-size: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  outline: none;
+  min-width: 0;
+}
+
+#url-bar:focus {
+  border-color: #007acc;
+  background: #1e1e1e;
+}

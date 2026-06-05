@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';">
+  <title>Nori Browser</title>
+  <link rel="stylesheet" href="../node_modules/xterm/css/xterm.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <div id="sidebar">
+      <div id="sidebar-header">
+        <span>Terminal</span>
+        <span id="cdp-info"></span>
+      </div>
+      <div id="terminal-container"></div>
+    </div>
+    <div id="divider"></div>
+    <div id="browser-area">
+      <div id="toolbar">
+        <button id="btn-back" title="Back">&#8592;</button>
+        <button id="btn-forward" title="Forward">&#8594;</button>
+        <button id="btn-reload" title="Reload">&#8635;</button>
+        <input id="url-bar" type="text" value="https://www.google.com" spellcheck="false" placeholder="Enter URL...">
+      </div>
+    </div>
+  </div>
+  <script src="bundle.js"></script>
+</body>
+</html>
