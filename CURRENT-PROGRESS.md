@@ -17,7 +17,13 @@
   - Scriptable tab management via playwright-bridge (list-tabs, new-tab, close-tab, switch-tab)
   - Closing last tab closes the window
   - window.open() intercepted to create new tabs
-- Full e2e test suite (23 tests passing: 12 core + 11 tab tests)
+- Full e2e test suite (33 tests passing: 16 core + 17 tab tests)
+- Chrome tab parity features:
+  - Ctrl+Shift+T to reopen recently closed tabs (LIFO stack, max 25 entries, reopens at original position)
+  - Middle-click on tab to close it
+  - Right-click context menu on tabs (New Tab, Reload, Duplicate, Close Tab, Close Other Tabs, Close Tabs to the Right)
+  - Scriptable IPC API for tab operations: duplicateTab, closeOtherTabs, closeTabsToRight, reopenClosedTab
+  - createTab() supports optional insertIndex for position-controlled insertion
 
 ## In Progress
 - (nothing currently in progress)
