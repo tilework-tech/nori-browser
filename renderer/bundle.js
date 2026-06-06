@@ -6030,6 +6030,7 @@ WARNING: This link could potentially be dangerous`)) {
   requestAnimationFrame(() => {
     fitAddon.fit();
     window.api.resizeTerminal({ cols: term.cols, rows: term.rows });
+    window.api.terminalReady();
   });
   term.onData((data) => {
     window.api.sendTerminalInput(data);

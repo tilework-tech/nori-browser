@@ -21,6 +21,7 @@ term.open(document.getElementById('terminal-container'));
 requestAnimationFrame(() => {
   fitAddon.fit();
   window.api.resizeTerminal({ cols: term.cols, rows: term.rows });
+  window.api.terminalReady();
 });
 
 term.onData((data) => {
