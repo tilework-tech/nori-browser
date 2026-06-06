@@ -15,6 +15,8 @@ let ptyProcess;
 let controlServer;
 let controlSockets = new Set();
 let sidebarWidth = 400;
+let savedSidebarWidth = 400;
+let sidebarVisible = true;
 let sessionDir;
 const TOOLBAR_HEIGHT = 48;
 
@@ -44,6 +46,15 @@ function createWindow() {
   });
   mainWindow.contentView.addChildView(browserView);
   browserView.webContents.loadURL('about:blank');
+
+  function interceptToggleShortcut(event, input) {
+    if (input.control && input.key.toLowerCase() === 'j' && input.type === 'keyDown') {
+      event.preventDefault();
+      handleToggleSidebar();
+    }
+  }
+  mainWindow.webContents.on('before-input-event', interceptToggleShortcut);
+  browserView.webContents.on('before-input-event', interceptToggleShortcut);
 
   mainWindow.once('ready-to-show', updateBrowserViewBounds);
   mainWindow.on('resize', updateBrowserViewBounds);
@@ -83,12 +94,27 @@ function createWindow() {
 function updateBrowserViewBounds() {
   if (!browserView || !mainWindow || mainWindow.isDestroyed()) return;
   const [width, height] = mainWindow.getContentSize();
+  const dividerWidth = sidebarVisible ? 4 : 0;
   browserView.setBounds({
-    x: sidebarWidth + 4,
+    x: sidebarWidth + dividerWidth,
     y: TOOLBAR_HEIGHT,
-    width: Math.max(0, width - sidebarWidth - 4),
+    width: Math.max(0, width - sidebarWidth - dividerWidth),
     height: Math.max(0, height - TOOLBAR_HEIGHT),
   });
+}
+
+function handleToggleSidebar() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (sidebarVisible) {
+    savedSidebarWidth = sidebarWidth;
+    sidebarWidth = 0;
+    sidebarVisible = false;
+  } else {
+    sidebarWidth = savedSidebarWidth;
+    sidebarVisible = true;
+  }
+  updateBrowserViewBounds();
+  mainWindow.webContents.send('sidebar-toggled', sidebarVisible);
 }
 
 function createSessionDir() {
@@ -250,8 +276,11 @@ ipcMain.on('reload', () => {
   if (browserView) browserView.webContents.reload();
 });
 
+ipcMain.on('toggle-sidebar', handleToggleSidebar);
+
 ipcMain.on('sidebar-resize', (_, width) => {
   sidebarWidth = width;
+  savedSidebarWidth = width;
   updateBrowserViewBounds();
 });
 

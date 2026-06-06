@@ -282,6 +282,40 @@ test.describe('Nori Browser', () => {
     }
   });
 
+  test('Ctrl+J hides sidebar and divider', async () => {
+    const sidebarVisible = await window.$eval('#sidebar', el => el.offsetWidth > 0);
+    const dividerVisible = await window.$eval('#divider', el => el.offsetWidth > 0);
+    expect(sidebarVisible).toBe(true);
+    expect(dividerVisible).toBe(true);
+
+    await window.keyboard.press('Control+j');
+    await window.waitForFunction(() => {
+      const sidebar = document.querySelector('#sidebar');
+      return sidebar.offsetWidth === 0;
+    }, { timeout: 5000 });
+
+    const sidebarHidden = await window.$eval('#sidebar', el => el.offsetWidth === 0);
+    const dividerHidden = await window.$eval('#divider', el => el.offsetWidth === 0);
+    expect(sidebarHidden).toBe(true);
+    expect(dividerHidden).toBe(true);
+  });
+
+  test('Ctrl+J toggles sidebar back to visible', async () => {
+    const sidebarHiddenBefore = await window.$eval('#sidebar', el => el.offsetWidth === 0);
+    expect(sidebarHiddenBefore).toBe(true);
+
+    await window.keyboard.press('Control+j');
+    await window.waitForFunction(() => {
+      const sidebar = document.querySelector('#sidebar');
+      return sidebar.offsetWidth > 0;
+    }, { timeout: 5000 });
+
+    const sidebarVisible = await window.$eval('#sidebar', el => el.offsetWidth > 0);
+    const dividerVisible = await window.$eval('#divider', el => el.offsetWidth > 0);
+    expect(sidebarVisible).toBe(true);
+    expect(dividerVisible).toBe(true);
+  });
+
   test('session directory is cleaned up on exit', async () => {
     const socket = await connectControl();
     let sessionDir;

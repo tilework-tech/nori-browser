@@ -126,3 +126,7 @@ html, body {
   border-color: #007acc;
   background: #1e1e1e;
 }
+
+.sidebar-hidden {
+  display: none !important;
+}
