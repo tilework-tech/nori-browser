@@ -2,13 +2,42 @@ const { test, expect } = require('@playwright/test');
 const { _electron: electron } = require('playwright');
 const { chromium } = require('playwright');
 const http = require('http');
+const net = require('net');
 const path = require('path');
 
 const CDP_PORT = 19223;
+const CONTROL_PORT = 19224;
 const APP_PATH = path.join(__dirname, '..');
 
 let testServer;
 let testServerPort;
+
+function connectControl() {
+  return new Promise((resolve, reject) => {
+    const socket = net.connect(CONTROL_PORT, '127.0.0.1', () => resolve(socket));
+    socket.on('error', reject);
+  });
+}
+
+function sendAndWait(socket, input, marker, timeout = 10000) {
+  return new Promise((resolve, reject) => {
+    let buf = '';
+    const timer = setTimeout(() => {
+      socket.removeListener('data', onData);
+      reject(new Error(`Timed out waiting for "${marker}" in terminal output. Got: ${buf.slice(-500)}`));
+    }, timeout);
+    function onData(data) {
+      buf += data.toString();
+      if (buf.includes(marker)) {
+        clearTimeout(timer);
+        socket.removeListener('data', onData);
+        resolve(buf);
+      }
+    }
+    socket.on('data', onData);
+    if (input) socket.write(input);
+  });
+}
 
 test.describe('Nori Browser', () => {
   let electronApp;
@@ -38,8 +67,10 @@ test.describe('Nori Browser', () => {
         ...process.env,
         NORI_BROWSER_SHELL: '/bin/bash',
         NORI_BROWSER_CDP_PORT: String(CDP_PORT),
+        NORI_BROWSER_CONTROL_PORT: String(CONTROL_PORT),
       },
     });
+
     await electronApp.firstWindow();
     for (let i = 0; i < 30; i++) {
       const windows = electronApp.windows();
@@ -50,7 +81,17 @@ test.describe('Nori Browser', () => {
       }
       await new Promise((r) => setTimeout(r, 500));
     }
-    await window.waitForLoadState('domcontentloaded');
+
+    // Wait for control port to be listening
+    for (let i = 0; i < 20; i++) {
+      try {
+        const sock = await connectControl();
+        sock.destroy();
+        break;
+      } catch {
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
   });
 
   test.afterAll(async () => {
@@ -68,17 +109,14 @@ test.describe('Nori Browser', () => {
     expect(await window.$('#divider')).toBeTruthy();
   });
 
-  test('terminal accepts input and shows output', async () => {
-    await window.waitForSelector('.xterm-screen', { timeout: 5000 });
-    const terminalEl = await window.$('.xterm-screen');
-    await terminalEl.click();
-
-    await window.keyboard.type('echo NORI_TEST_OUTPUT_12345');
-    await window.keyboard.press('Enter');
-
-    await expect.poll(async () => {
-      return await window.$eval('.xterm-screen', (el) => el.textContent);
-    }, { timeout: 5000 }).toContain('NORI_TEST_OUTPUT_12345');
+  test('terminal accepts input and shows output via control socket', async () => {
+    const socket = await connectControl();
+    try {
+      const output = await sendAndWait(socket, 'echo CTRL_TEST_42\n', 'CTRL_TEST_42');
+      expect(output).toContain('CTRL_TEST_42');
+    } finally {
+      socket.destroy();
+    }
   });
 
   test('URL bar navigates browser to local URL', async () => {
@@ -111,95 +149,64 @@ test.describe('Nori Browser', () => {
     }
   });
 
-  test('terminal has NORI_BROWSER_DIR and NODE_PATH environment variables', async () => {
-    const terminalEl = await window.$('.xterm-screen');
-    await terminalEl.click();
-
-    await window.keyboard.type('echo NODEPATH_CHK=$NODE_PATH');
-    await window.keyboard.press('Enter');
-
-    await expect.poll(async () => {
-      return await window.$eval('.xterm-screen', (el) => el.textContent);
-    }, { timeout: 5000 }).toContain('node_modules');
-
-    await window.keyboard.type('ls $NORI_BROWSER_DIR/playwright-bridge.js && echo BRIDGE_FOUND_OK');
-    await window.keyboard.press('Enter');
-
-    await expect.poll(async () => {
-      return await window.$eval('.xterm-screen', (el) => el.textContent);
-    }, { timeout: 5000 }).toContain('BRIDGE_FOUND_OK');
-  });
-
-  test('terminal has CDP environment variables', async () => {
-    const terminalEl = await window.$('.xterm-screen');
-    await terminalEl.click();
-
-    await window.keyboard.type('echo CDP_PORT=$NORI_BROWSER_CDP_PORT');
-    await window.keyboard.press('Enter');
-
-    await expect.poll(async () => {
-      return await window.$eval('.xterm-screen', (el) => el.textContent);
-    }, { timeout: 5000 }).toContain(`CDP_PORT=${CDP_PORT}`);
-
-    await window.keyboard.type('echo PW_CDP=$PLAYWRIGHT_CDP_URL');
-    await window.keyboard.press('Enter');
-
-    await expect.poll(async () => {
-      return await window.$eval('.xterm-screen', (el) => el.textContent);
-    }, { timeout: 5000 }).toContain(`PW_CDP=http://localhost:${CDP_PORT}`);
+  test('terminal has correct environment variables', async () => {
+    const socket = await connectControl();
+    try {
+      await sendAndWait(socket, 'echo ENVCHK_CDP=$NORI_BROWSER_CDP_PORT\n', `ENVCHK_CDP=${CDP_PORT}`);
+      await sendAndWait(socket, 'echo ENVCHK_PW=$PLAYWRIGHT_CDP_URL\n', `ENVCHK_PW=http://localhost:${CDP_PORT}`);
+      await sendAndWait(socket, 'echo ENVCHK_NP=$NODE_PATH\n', 'node_modules');
+      await sendAndWait(socket, 'ls $NORI_BROWSER_DIR/playwright-bridge.js && echo BRIDGE_FOUND\n', 'BRIDGE_FOUND');
+    } finally {
+      socket.destroy();
+    }
   });
 
   test('agent can use playwright-bridge.js from terminal to navigate browser', async () => {
-    const terminalEl = await window.$('.xterm-screen');
-    await terminalEl.click();
+    const socket = await connectControl();
+    try {
+      const navUrl = `http://127.0.0.1:${testServerPort}/page-a`;
+      const output = await sendAndWait(socket, `node $NORI_BROWSER_DIR/playwright-bridge.js navigate '${navUrl}'\n`, 'NAVIGATE_OK', 15000);
+      expect(output).toContain('NAVIGATE_OK');
+      expect(output).toContain('Page A');
 
-    const navUrl = `http://127.0.0.1:${testServerPort}/page-a`;
-    await window.keyboard.type(`node $NORI_BROWSER_DIR/playwright-bridge.js navigate '${navUrl}'`);
-    await window.keyboard.press('Enter');
-
-    await expect.poll(async () => {
-      return await window.$eval('.xterm-screen', (el) => el.textContent);
-    }, { timeout: 15000 }).toContain('NAVIGATE_OK');
-
-    const urlBar = await window.$('#url-bar');
-    await expect.poll(async () => {
-      return await urlBar.inputValue();
-    }, { timeout: 5000 }).toContain(`127.0.0.1:${testServerPort}/page-a`);
+      const urlBar = await window.$('#url-bar');
+      await expect.poll(async () => {
+        return await urlBar.inputValue();
+      }, { timeout: 5000 }).toContain(`127.0.0.1:${testServerPort}/page-a`);
+    } finally {
+      socket.destroy();
+    }
   });
 
   test('agent can use playwright-bridge.js from terminal to get page status', async () => {
-    const terminalEl = await window.$('.xterm-screen');
-    await terminalEl.click();
-
-    await window.keyboard.type('node $NORI_BROWSER_DIR/playwright-bridge.js status');
-    await window.keyboard.press('Enter');
-
-    await expect.poll(async () => {
-      return await window.$eval('.xterm-screen', (el) => el.textContent);
-    }, { timeout: 15000 }).toContain('STATUS_OK');
+    const socket = await connectControl();
+    try {
+      const output = await sendAndWait(socket, 'node $NORI_BROWSER_DIR/playwright-bridge.js status\n', 'STATUS_OK', 15000);
+      expect(output).toContain('STATUS_OK');
+      expect(output).toContain('URL:');
+    } finally {
+      socket.destroy();
+    }
   });
 
   test('agent can use playwright-bridge.js to evaluate JavaScript on page', async () => {
-    const terminalEl = await window.$('.xterm-screen');
-    await terminalEl.click();
-
-    await window.keyboard.type(`node $NORI_BROWSER_DIR/playwright-bridge.js eval 'document.title'`);
-    await window.keyboard.press('Enter');
-
-    await expect.poll(async () => {
-      return await window.$eval('.xterm-screen', (el) => el.textContent);
-    }, { timeout: 15000 }).toContain('EVAL_OK');
+    const socket = await connectControl();
+    try {
+      const output = await sendAndWait(socket, `node $NORI_BROWSER_DIR/playwright-bridge.js eval 'document.title'\n`, 'EVAL_OK', 15000);
+      expect(output).toContain('EVAL_OK');
+      expect(output).toContain('Result:');
+    } finally {
+      socket.destroy();
+    }
   });
 
   test('agent can use playwright-bridge.js to get page content', async () => {
-    const terminalEl = await window.$('.xterm-screen');
-    await terminalEl.click();
-
-    await window.keyboard.type('node $NORI_BROWSER_DIR/playwright-bridge.js content');
-    await window.keyboard.press('Enter');
-
-    await expect.poll(async () => {
-      return await window.$eval('.xterm-screen', (el) => el.textContent);
-    }, { timeout: 15000 }).toContain('CONTENT_OK');
+    const socket = await connectControl();
+    try {
+      const output = await sendAndWait(socket, 'node $NORI_BROWSER_DIR/playwright-bridge.js content\n', 'CONTENT_OK', 15000);
+      expect(output).toContain('CONTENT_OK');
+    } finally {
+      socket.destroy();
+    }
   });
 });

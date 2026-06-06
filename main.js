@@ -1,19 +1,22 @@
 const { app, BrowserWindow, BrowserView, ipcMain } = require('electron');
+const net = require('net');
 const path = require('path');
 const pty = require('node-pty');
 
 const CDP_PORT = parseInt(process.env.NORI_BROWSER_CDP_PORT || '19222');
+const CONTROL_PORT = parseInt(process.env.NORI_BROWSER_CONTROL_PORT || '0');
 app.commandLine.appendSwitch('remote-debugging-port', String(CDP_PORT));
 
 let mainWindow;
 let browserView;
 let ptyProcess;
+let controlServer;
+let controlSockets = new Set();
 let sidebarWidth = 400;
 const TOOLBAR_HEIGHT = 48;
 
 app.whenReady().then(() => {
   createWindow();
-  startTerminal();
 });
 
 function createWindow() {
@@ -83,6 +86,7 @@ function updateBrowserViewBounds() {
 }
 
 function startTerminal() {
+  if (ptyProcess) return;
   const { command, args } = resolveShell();
   ptyProcess = pty.spawn(command, args, {
     name: 'xterm-256color',
@@ -99,14 +103,41 @@ function startTerminal() {
   });
 
   ptyProcess.onData((data) => {
+    if (data.includes('\x1b[6n')) {
+      ptyProcess.write('\x1b[1;1R');
+    }
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('terminal-data', data);
+    }
+    for (const socket of controlSockets) {
+      socket.write(data);
     }
   });
 
   ptyProcess.onExit(({ exitCode }) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('terminal-exit', exitCode);
+    }
+  });
+
+  startControlServer();
+}
+
+function startControlServer() {
+  if (CONTROL_PORT === 0 && !process.env.NORI_BROWSER_CONTROL_PORT) return;
+  controlServer = net.createServer((socket) => {
+    controlSockets.add(socket);
+    socket.on('data', (data) => {
+      if (ptyProcess) ptyProcess.write(data.toString());
+    });
+    socket.on('close', () => controlSockets.delete(socket));
+    socket.on('error', () => controlSockets.delete(socket));
+  });
+  controlServer.listen(CONTROL_PORT, '127.0.0.1', () => {
+    const port = controlServer.address().port;
+    process.env.NORI_BROWSER_CONTROL_PORT = String(port);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('control-port', port);
     }
   });
 }
@@ -128,6 +159,10 @@ function resolveShell() {
 
   return { command: process.env.SHELL || '/bin/bash', args: [] };
 }
+
+ipcMain.on('terminal-ready', () => {
+  startTerminal();
+});
 
 ipcMain.on('terminal-input', (_, data) => {
   if (ptyProcess) ptyProcess.write(data);
@@ -168,5 +203,7 @@ ipcMain.on('sidebar-resize', (_, width) => {
 
 app.on('window-all-closed', () => {
   if (ptyProcess) ptyProcess.kill();
+  if (controlServer) controlServer.close();
+  for (const socket of controlSockets) socket.destroy();
   app.quit();
 });
