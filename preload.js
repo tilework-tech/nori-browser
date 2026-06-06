@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
+  signalTerminalReady: () => ipcRenderer.send('terminal-ready'),
   sendTerminalInput: (data) => ipcRenderer.send('terminal-input', data),
   resizeTerminal: (size) => ipcRenderer.send('terminal-resize', size),
   onTerminalData: (cb) => ipcRenderer.on('terminal-data', (_, data) => cb(data)),
