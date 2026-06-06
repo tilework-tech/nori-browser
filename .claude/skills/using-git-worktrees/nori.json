@@ -1,0 +1,6 @@
+{
+  "name": "using-git-worktrees",
+  "version": "1.0.6",
+  "description": "Use this whenever you need to create an isolated workspace.",
+  "type": "skill"
+}
