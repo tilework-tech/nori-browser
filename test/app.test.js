@@ -282,6 +282,54 @@ test.describe('Nori Browser', () => {
     }
   });
 
+  test('maximizing window expands the rendered browser page', async () => {
+    const urlBar = await window.$('#url-bar');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill(`http://127.0.0.1:${testServerPort}/page-a`);
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => {
+      return await urlBar.inputValue();
+    }, { timeout: 10000 }).toContain('page-a');
+
+    let cdpBrowser;
+    try {
+      cdpBrowser = await chromium.connectOverCDP(`http://localhost:${CDP_PORT}`);
+      const allPages = cdpBrowser.contexts().flatMap((c) => c.pages());
+      const browserPage = allPages.find((p) => !p.url().startsWith('file://'));
+      expect(browserPage).toBeTruthy();
+
+      const bw = await electronApp.browserWindow(window);
+      await bw.evaluate((win) => win.setSize(800, 600));
+      await expect.poll(async () => {
+        return await browserPage.evaluate(() => window.innerWidth);
+      }, { timeout: 5000 }).toBeLessThan(500);
+
+      const smallSize = await browserPage.evaluate(() => ({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      }));
+
+      await bw.evaluate((win) => win.maximize());
+
+      await expect.poll(async () => {
+        return await browserPage.evaluate(() => window.innerWidth);
+      }, { timeout: 5000 }).toBeGreaterThan(smallSize.width);
+
+      const maxSize = await browserPage.evaluate(() => ({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      }));
+      expect(maxSize.height).toBeGreaterThan(smallSize.height);
+    } finally {
+      if (cdpBrowser) await cdpBrowser.close();
+      const bw = await electronApp.browserWindow(window);
+      await bw.evaluate((win) => {
+        win.unmaximize();
+        win.setSize(1400, 900);
+      });
+    }
+  });
+
   test('Ctrl+J hides sidebar and divider', async () => {
     const sidebarVisible = await window.$eval('#sidebar', el => el.offsetWidth > 0);
     const dividerVisible = await window.$eval('#divider', el => el.offsetWidth > 0);

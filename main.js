@@ -58,8 +58,14 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', updateBrowserViewBounds);
   mainWindow.on('resize', updateBrowserViewBounds);
-  mainWindow.on('maximize', updateBrowserViewBounds);
-  mainWindow.on('unmaximize', updateBrowserViewBounds);
+  mainWindow.on('maximize', () => {
+    updateBrowserViewBounds();
+    setTimeout(updateBrowserViewBounds, 100);
+  });
+  mainWindow.on('unmaximize', () => {
+    updateBrowserViewBounds();
+    setTimeout(updateBrowserViewBounds, 100);
+  });
   mainWindow.on('enter-full-screen', updateBrowserViewBounds);
   mainWindow.on('leave-full-screen', updateBrowserViewBounds);
 
