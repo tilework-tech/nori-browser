@@ -240,6 +240,130 @@ test.describe('Nori Browser', () => {
     }
   });
 
+  test('resizing window updates the rendered browser page dimensions', async () => {
+    const urlBar = await window.$('#url-bar');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill(`http://127.0.0.1:${testServerPort}/page-a`);
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => {
+      return await urlBar.inputValue();
+    }, { timeout: 10000 }).toContain('page-a');
+
+    let cdpBrowser;
+    try {
+      cdpBrowser = await chromium.connectOverCDP(`http://localhost:${CDP_PORT}`);
+      const allPages = cdpBrowser.contexts().flatMap((c) => c.pages());
+      const browserPage = allPages.find((p) => !p.url().startsWith('file://'));
+      expect(browserPage).toBeTruthy();
+
+      const initialSize = await browserPage.evaluate(() => ({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      }));
+
+      const bw = await electronApp.browserWindow(window);
+      await bw.evaluate((win) => win.setSize(800, 600));
+
+      await expect.poll(async () => {
+        return await browserPage.evaluate(() => window.innerWidth);
+      }, { timeout: 5000 }).toBeLessThan(initialSize.width);
+
+      const newSize = await browserPage.evaluate(() => ({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      }));
+      expect(newSize.width).toBeGreaterThan(0);
+      expect(newSize.height).toBeLessThan(initialSize.height);
+      expect(newSize.height).toBeGreaterThan(0);
+    } finally {
+      if (cdpBrowser) await cdpBrowser.close();
+      const bw = await electronApp.browserWindow(window);
+      await bw.evaluate((win) => win.setSize(1400, 900));
+    }
+  });
+
+  test('maximizing window expands the rendered browser page', async () => {
+    const urlBar = await window.$('#url-bar');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill(`http://127.0.0.1:${testServerPort}/page-a`);
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => {
+      return await urlBar.inputValue();
+    }, { timeout: 10000 }).toContain('page-a');
+
+    let cdpBrowser;
+    try {
+      cdpBrowser = await chromium.connectOverCDP(`http://localhost:${CDP_PORT}`);
+      const allPages = cdpBrowser.contexts().flatMap((c) => c.pages());
+      const browserPage = allPages.find((p) => !p.url().startsWith('file://'));
+      expect(browserPage).toBeTruthy();
+
+      const bw = await electronApp.browserWindow(window);
+      await bw.evaluate((win) => win.setSize(800, 600));
+      await expect.poll(async () => {
+        return await browserPage.evaluate(() => window.innerWidth);
+      }, { timeout: 5000 }).toBeLessThan(500);
+
+      const smallSize = await browserPage.evaluate(() => ({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      }));
+
+      await bw.evaluate((win) => win.maximize());
+
+      await expect.poll(async () => {
+        return await browserPage.evaluate(() => window.innerWidth);
+      }, { timeout: 5000 }).toBeGreaterThan(smallSize.width);
+
+      const maxSize = await browserPage.evaluate(() => ({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      }));
+      expect(maxSize.height).toBeGreaterThan(smallSize.height);
+    } finally {
+      if (cdpBrowser) await cdpBrowser.close();
+      const bw = await electronApp.browserWindow(window);
+      await bw.evaluate((win) => {
+        win.unmaximize();
+        win.setSize(1400, 900);
+      });
+    }
+  });
+
+  test('Ctrl+J hides sidebar and divider', async () => {
+    const sidebarVisible = await window.$eval('#sidebar', el => el.offsetWidth > 0);
+    const dividerVisible = await window.$eval('#divider', el => el.offsetWidth > 0);
+    expect(sidebarVisible).toBe(true);
+    expect(dividerVisible).toBe(true);
+
+    await window.keyboard.press('Control+j');
+    await window.waitForFunction(() => {
+      const sidebar = document.querySelector('#sidebar');
+      return sidebar.offsetWidth === 0;
+    }, { timeout: 5000 });
+
+    const sidebarHidden = await window.$eval('#sidebar', el => el.offsetWidth === 0);
+    const dividerHidden = await window.$eval('#divider', el => el.offsetWidth === 0);
+    expect(sidebarHidden).toBe(true);
+    expect(dividerHidden).toBe(true);
+  });
+
+  test('Ctrl+J toggles sidebar back to visible', async () => {
+    const sidebarHiddenBefore = await window.$eval('#sidebar', el => el.offsetWidth === 0);
+    expect(sidebarHiddenBefore).toBe(true);
+
+    await window.keyboard.press('Control+j');
+    await window.waitForFunction(() => {
+      const sidebar = document.querySelector('#sidebar');
+      return sidebar.offsetWidth > 0;
+    }, { timeout: 5000 });
+
+    const sidebarVisible = await window.$eval('#sidebar', el => el.offsetWidth > 0);
+    const dividerVisible = await window.$eval('#divider', el => el.offsetWidth > 0);
+    expect(sidebarVisible).toBe(true);
+    expect(dividerVisible).toBe(true);
+  });
+
   test('session directory is cleaned up on exit', async () => {
     const socket = await connectControl();
     let sessionDir;

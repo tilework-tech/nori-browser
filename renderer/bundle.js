@@ -6027,6 +6027,10 @@ WARNING: This link could potentially be dangerous`)) {
   var fitAddon = new import_xterm_addon_fit.FitAddon();
   term.loadAddon(fitAddon);
   term.open(document.getElementById("terminal-container"));
+  term.attachCustomKeyEventHandler((ev) => {
+    if (ev.ctrlKey && ev.key === "j") return false;
+    return true;
+  });
   requestAnimationFrame(() => {
     fitAddon.fit();
     window.api.resizeTerminal({ cols: term.cols, rows: term.rows });
@@ -6043,11 +6047,15 @@ WARNING: This link could potentially be dangerous`)) {
 [Process exited with code ${code}]\r
 `);
   });
+  var terminalContainer = document.getElementById("terminal-container");
   var resizeObserver = new ResizeObserver(() => {
-    fitAddon.fit();
-    window.api.resizeTerminal({ cols: term.cols, rows: term.rows });
+    const rect = terminalContainer.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      fitAddon.fit();
+      window.api.resizeTerminal({ cols: term.cols, rows: term.rows });
+    }
   });
-  resizeObserver.observe(document.getElementById("terminal-container"));
+  resizeObserver.observe(terminalContainer);
   var urlBar = document.getElementById("url-bar");
   urlBar.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
@@ -6127,6 +6135,25 @@ WARNING: This link could potentially be dangerous`)) {
   });
   var divider = document.getElementById("divider");
   var sidebar = document.getElementById("sidebar");
+  document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey && e.key === "j") {
+      e.preventDefault();
+      window.api.toggleSidebar();
+    }
+  });
+  window.api.onSidebarToggled((visible) => {
+    if (visible) {
+      sidebar.classList.remove("sidebar-hidden");
+      divider.classList.remove("sidebar-hidden");
+      requestAnimationFrame(() => {
+        fitAddon.fit();
+        window.api.resizeTerminal({ cols: term.cols, rows: term.rows });
+      });
+    } else {
+      sidebar.classList.add("sidebar-hidden");
+      divider.classList.add("sidebar-hidden");
+    }
+  });
   var isDragging = false;
   divider.addEventListener("mousedown", (e) => {
     isDragging = true;

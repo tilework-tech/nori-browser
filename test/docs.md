@@ -5,7 +5,7 @@ Path: @/test
 ### Overview
 
 - End-to-end Playwright tests for the Nori Browser Electron app
-- Tests launch the real Electron app with a local HTTP test server, verifying the full integration: UI elements, terminal I/O, URL bar navigation, CDP connectivity, environment variables, session directory lifecycle, the agent bridge CLI workflow, and multi-tab operations
+- Tests launch the real Electron app with a local HTTP test server, verifying the full integration: UI elements, terminal I/O, URL bar navigation, CDP connectivity, environment variables, window state transitions (resize, maximize), session directory lifecycle, the agent bridge CLI workflow, and multi-tab operations
 
 ### How it fits into the larger codebase
 
@@ -13,6 +13,7 @@ Path: @/test
 - Configured by `@/playwright.config.js`: 60s timeout, 1 retry, traces on first retry
 - Tests use `NORI_BROWSER_SHELL=/bin/bash` to get a predictable terminal shell, and offset CDP/control ports to avoid collisions with a running dev instance
 - Tests exercise the same bridge CLI commands (`navigate`, `status`, `eval`, `content`, `list-tabs`) that an agent would use in production
+- Tests also verify keyboard shortcuts (Ctrl+J sidebar toggle) by simulating keypresses and asserting DOM visibility changes
 
 ### Core Implementation
 

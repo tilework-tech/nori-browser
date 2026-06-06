@@ -14,6 +14,8 @@ let ptyProcess;
 let controlServer;
 let controlSockets = new Set();
 let sidebarWidth = 400;
+let savedSidebarWidth = 400;
+let sidebarVisible = true;
 let sessionDir;
 const TOOLBAR_HEIGHT = 48;
 const TAB_BAR_HEIGHT = 36;
@@ -42,13 +44,29 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', updateAllTabBounds);
   mainWindow.on('resize', updateAllTabBounds);
-  mainWindow.on('maximize', updateAllTabBounds);
-  mainWindow.on('unmaximize', updateAllTabBounds);
+  mainWindow.on('maximize', () => {
+    updateAllTabBounds();
+    setTimeout(updateAllTabBounds, 100);
+  });
+  mainWindow.on('unmaximize', () => {
+    updateAllTabBounds();
+    setTimeout(updateAllTabBounds, 100);
+  });
+  mainWindow.on('enter-full-screen', updateAllTabBounds);
+  mainWindow.on('leave-full-screen', updateAllTabBounds);
 
   mainWindow.webContents.once('did-finish-load', () => {
     createTab('about:blank');
     mainWindow.webContents.send('cdp-port', CDP_PORT);
   });
+
+  function interceptToggleShortcut(event, input) {
+    if (input.control && input.key.toLowerCase() === 'j' && input.type === 'keyDown') {
+      event.preventDefault();
+      handleToggleSidebar();
+    }
+  }
+  mainWindow.webContents.on('before-input-event', interceptToggleShortcut);
 
   const menu = Menu.buildFromTemplate([
     {
@@ -122,6 +140,13 @@ function createTab(url) {
     sendTabsChanged();
   });
 
+  view.webContents.on('before-input-event', (event, input) => {
+    if (input.control && input.key.toLowerCase() === 'j' && input.type === 'keyDown') {
+      event.preventDefault();
+      handleToggleSidebar();
+    }
+  });
+
   view.webContents.setWindowOpenHandler(({ url: openUrl }) => {
     createTab(openUrl);
     return { action: 'deny' };
@@ -135,6 +160,7 @@ function createTab(url) {
 }
 
 function closeTab(tabId) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
   const idx = tabs.findIndex(t => t.id === tabId);
   if (idx === -1) return;
 
@@ -228,10 +254,11 @@ function sendTabsChanged() {
 function setTabBounds(view) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   const [width, height] = mainWindow.getContentSize();
+  const dividerWidth = sidebarVisible ? 4 : 0;
   view.setBounds({
-    x: sidebarWidth + 4,
+    x: sidebarWidth + dividerWidth,
     y: TOOLBAR_HEIGHT + TAB_BAR_HEIGHT,
-    width: Math.max(0, width - sidebarWidth - 4),
+    width: Math.max(0, width - sidebarWidth - dividerWidth),
     height: Math.max(0, height - TOOLBAR_HEIGHT - TAB_BAR_HEIGHT),
   });
 }
@@ -240,6 +267,20 @@ function updateAllTabBounds() {
   for (const tab of tabs) {
     setTabBounds(tab.view);
   }
+}
+
+function handleToggleSidebar() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (sidebarVisible) {
+    savedSidebarWidth = sidebarWidth;
+    sidebarWidth = 0;
+    sidebarVisible = false;
+  } else {
+    sidebarWidth = savedSidebarWidth;
+    sidebarVisible = true;
+  }
+  updateAllTabBounds();
+  mainWindow.webContents.send('sidebar-toggled', sidebarVisible);
 }
 
 function createSessionDir() {
@@ -409,8 +450,11 @@ ipcMain.on('reload', () => {
   if (view) view.webContents.reload();
 });
 
+ipcMain.on('toggle-sidebar', handleToggleSidebar);
+
 ipcMain.on('sidebar-resize', (_, width) => {
   sidebarWidth = width;
+  savedSidebarWidth = width;
   updateAllTabBounds();
 });
 

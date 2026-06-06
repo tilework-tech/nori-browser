@@ -18,6 +18,11 @@ const fitAddon = new FitAddon();
 term.loadAddon(fitAddon);
 term.open(document.getElementById('terminal-container'));
 
+term.attachCustomKeyEventHandler((ev) => {
+  if (ev.ctrlKey && ev.key === 'j') return false;
+  return true;
+});
+
 requestAnimationFrame(() => {
   fitAddon.fit();
   window.api.resizeTerminal({ cols: term.cols, rows: term.rows });
@@ -36,11 +41,15 @@ window.api.onTerminalExit((code) => {
   term.write(`\r\n[Process exited with code ${code}]\r\n`);
 });
 
+const terminalContainer = document.getElementById('terminal-container');
 const resizeObserver = new ResizeObserver(() => {
-  fitAddon.fit();
-  window.api.resizeTerminal({ cols: term.cols, rows: term.rows });
+  const rect = terminalContainer.getBoundingClientRect();
+  if (rect.width > 0 && rect.height > 0) {
+    fitAddon.fit();
+    window.api.resizeTerminal({ cols: term.cols, rows: term.rows });
+  }
 });
-resizeObserver.observe(document.getElementById('terminal-container'));
+resizeObserver.observe(terminalContainer);
 
 const urlBar = document.getElementById('url-bar');
 urlBar.addEventListener('keydown', (e) => {
@@ -141,6 +150,27 @@ window.api.onTabsChanged((data) => {
 // Sidebar divider
 const divider = document.getElementById('divider');
 const sidebar = document.getElementById('sidebar');
+
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.key === 'j') {
+    e.preventDefault();
+    window.api.toggleSidebar();
+  }
+});
+
+window.api.onSidebarToggled((visible) => {
+  if (visible) {
+    sidebar.classList.remove('sidebar-hidden');
+    divider.classList.remove('sidebar-hidden');
+    requestAnimationFrame(() => {
+      fitAddon.fit();
+      window.api.resizeTerminal({ cols: term.cols, rows: term.rows });
+    });
+  } else {
+    sidebar.classList.add('sidebar-hidden');
+    divider.classList.add('sidebar-hidden');
+  }
+});
 let isDragging = false;
 
 divider.addEventListener('mousedown', (e) => {

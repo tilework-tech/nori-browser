@@ -23,7 +23,7 @@ if (require.main === module) {
 }
 
 async function run(command, args) {
-  const { browser, page, pages } = await connectToBrowser();
+  const { browser, page, pages, contexts } = await connectToBrowser();
 
   try {
     switch (command) {

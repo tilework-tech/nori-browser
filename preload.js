@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('api', {
   onUrlChanged: (cb) => ipcRenderer.on('url-changed', (_, url) => cb(url)),
   resizeSidebar: (width) => ipcRenderer.send('sidebar-resize', width),
   onCdpPort: (cb) => ipcRenderer.on('cdp-port', (_, port) => cb(port)),
+  toggleSidebar: () => ipcRenderer.send('toggle-sidebar'),
+  onSidebarToggled: (cb) => ipcRenderer.on('sidebar-toggled', (_, visible) => cb(visible)),
   createTab: (url) => ipcRenderer.send('create-tab', url),
   closeTab: (tabId) => ipcRenderer.send('close-tab', tabId),
   switchTab: (tabId) => ipcRenderer.send('switch-tab', tabId),
