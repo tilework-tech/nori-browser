@@ -262,6 +262,7 @@ function duplicateTab(tabId) {
 }
 
 function closeOtherTabs(tabId) {
+  if (!tabs.some(t => t.id === tabId)) return;
   const toClose = tabs.filter(t => t.id !== tabId).map(t => t.id);
   for (const id of toClose) closeTab(id);
 }
@@ -537,7 +538,7 @@ ipcMain.on('tab-context-menu', (event, tabId) => {
   if (!tab) return;
   const menu = Menu.buildFromTemplate([
     { label: 'New Tab', click: () => createTab('about:blank') },
-    { label: 'Reload', click: () => tab.view.webContents.reload() },
+    { label: 'Reload', click: () => { const t = tabs.find(t => t.id === tabId); if (t) t.view.webContents.reload(); } },
     { label: 'Duplicate', click: () => duplicateTab(tabId) },
     { type: 'separator' },
     { label: 'Close Tab', click: () => closeTab(tabId) },
