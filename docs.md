@@ -38,8 +38,9 @@ Agent types in terminal
   -> bridge performs action, prints status marker (e.g. NAVIGATE_OK), disconnects
   -> terminal shows output to agent
 ```
-- **IPC channels** in `preload.js` expose a `window.api` surface: terminal I/O (`terminal-input`, `terminal-data`, `terminal-exit`), navigation (`navigate`, `go-back`, `go-forward`, `reload`), layout (`sidebar-resize`), and state sync (`url-changed`, `cdp-port`)
-- **BrowserView bounds** are computed from `sidebarWidth` and `TOOLBAR_HEIGHT` constants. The sidebar is resizable via a drag divider in the renderer; resize events propagate through `sidebar-resize` IPC to recalculate bounds
+- **IPC channels** in `preload.js` expose a `window.api` surface: terminal I/O (`terminal-input`, `terminal-data`, `terminal-exit`), navigation (`navigate`, `go-back`, `go-forward`, `reload`), layout (`sidebar-resize`, `toggle-sidebar`, `sidebar-toggled`), and state sync (`url-changed`, `cdp-port`)
+- **Sidebar toggle (Ctrl+J)**: The main process owns the toggle state (`sidebarVisible`, `savedSidebarWidth`). Pressing Ctrl+J triggers `handleToggleSidebar()`, which saves/restores the sidebar width, recalculates `BrowserView` bounds, and notifies the renderer via `sidebar-toggled` IPC. The shortcut is intercepted at two levels: `before-input-event` on both `mainWindow.webContents` and `browserView.webContents` (catches the key when either has focus), plus a renderer-side `keydown` listener and xterm custom key handler (see `@/renderer/renderer.js`)
+- **BrowserView bounds** are computed from `sidebarWidth`, `TOOLBAR_HEIGHT`, and `sidebarVisible`. The sidebar is resizable via a drag divider in the renderer; resize events propagate through `sidebar-resize` IPC to recalculate bounds. When the sidebar is hidden, the 4px divider width is excluded from the offset calculation so the browser pane fills the full window width
 - **Bridge CLI** (`playwright-bridge.js`) supports commands: `status`, `navigate`, `snapshot`, `click`, `fill`, `eval`, `content`, `screenshot`. It also exports `connectToBrowser()` for programmatic use
 - **Build step**: `renderer/renderer.js` is bundled via esbuild into `renderer/bundle.js` before the app starts or tests run
 

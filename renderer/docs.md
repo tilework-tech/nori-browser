@@ -12,15 +12,16 @@ Path: @/renderer
 
 - Loaded by `mainWindow.loadFile()` in `@/main.js`; sits alongside (not inside) the `BrowserView` which renders actual web content
 - Receives URL updates and CDP port info from the main process via IPC listeners (`onUrlChanged`, `onCdpPort`)
-- Sends user actions back to main process: terminal keystrokes (`sendTerminalInput`), URL bar navigation (`navigate`), toolbar buttons (`goBack`, `goForward`, `reload`), sidebar width changes (`resizeSidebar`)
+- Sends user actions back to main process: terminal keystrokes (`sendTerminalInput`), URL bar navigation (`navigate`), toolbar buttons (`goBack`, `goForward`, `reload`), sidebar width changes (`resizeSidebar`), sidebar toggle (`toggleSidebar`)
 - The terminal is rendered by xterm.js with the FitAddon; terminal sizing (`cols`/`rows`) is synced to the main process so `node-pty` can resize its pseudoterminal accordingly
 - The `BrowserView` occupies the area to the right of the sidebar. Its bounds are managed entirely by the main process -- the renderer just reports sidebar width changes
 
 ### Core Implementation
 
-- **Terminal setup**: xterm.js `Terminal` instance opens into `#terminal-container`, with `FitAddon` handling auto-resize. A `ResizeObserver` on the container triggers re-fit + PTY resize on layout changes
+- **Terminal setup**: xterm.js `Terminal` instance opens into `#terminal-container`, with `FitAddon` handling auto-resize. A `ResizeObserver` on the container triggers re-fit + PTY resize on layout changes (guarded against zero dimensions to avoid errors when the sidebar is hidden). A custom key event handler on xterm suppresses Ctrl+J so xterm does not consume it as a linefeed character
 - **URL bar**: Pressing Enter in `#url-bar` sends the value through `window.api.navigate()`. The main process handles protocol prefixing and loads the URL into the `BrowserView`
 - **Sidebar resize**: Mousedown on `#divider` starts a drag; mousemove updates `sidebar.style.width`, notifies main process via `resizeSidebar()`, and re-fits the terminal. Constrained to 200-800px
+- **Sidebar toggle (Ctrl+J)**: A document-level `keydown` listener catches Ctrl+J and calls `window.api.toggleSidebar()`. The main process responds with a `sidebar-toggled` IPC event; the renderer handler toggles a `.sidebar-hidden` CSS class (`display: none !important` in `@/renderer/styles.css`) on both `#sidebar` and `#divider`. When the sidebar is shown, a `requestAnimationFrame` re-fits the terminal and syncs the PTY size
 - **CDP info display**: `#cdp-info` span in the sidebar header shows the CDP port once received from the main process, giving the user visibility into the connection port
 
 ### Things to Know
@@ -29,5 +30,6 @@ Path: @/renderer
 - `bundle.js` is a build artifact checked into the repo. It must be rebuilt (`npm run build`) after any change to `renderer.js`
 - xterm.css is loaded directly from `node_modules` via a relative path in `index.html` -- this works because Electron loads files from the filesystem, not a web server
 - The URL bar `value` attribute starts empty; it gets populated by the `onUrlChanged` IPC event when the `BrowserView` navigates
+- Ctrl+J is intercepted at three layers: xterm's custom key handler (returns `false` to prevent linefeed), a document `keydown` listener (sends `toggle-sidebar` IPC), and the main process `before-input-event` on both webContents (see `@/main.js`). All three are needed because focus can be in xterm, the renderer document, or the BrowserView
 
 Created and maintained by Nori.

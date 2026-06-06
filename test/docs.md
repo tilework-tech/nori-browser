@@ -13,6 +13,7 @@ Path: @/test
 - Configured by `@/playwright.config.js`: 60s timeout, 1 retry, traces on first retry
 - Tests use `NORI_BROWSER_SHELL=/bin/bash` to get a predictable terminal shell, and `NORI_BROWSER_CDP_PORT=19223` to avoid port collisions with a running dev instance
 - Tests exercise the same bridge CLI commands (`navigate`, `status`, `eval`, `content`) that an agent would use in production, by typing them into the terminal and checking for status markers in terminal output
+- Tests also verify keyboard shortcuts (Ctrl+J sidebar toggle) by simulating keypresses and asserting DOM visibility changes
 
 ### Core Implementation
 
