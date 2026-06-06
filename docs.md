@@ -11,8 +11,8 @@ Path: @/
 ### How it fits into the larger codebase
 
 - This is the top-level application directory; `renderer/` contains the frontend UI and `test/` contains end-to-end Playwright tests
-- The terminal spawns whatever shell `NORI_BROWSER_SHELL` specifies, falling back to `nori` CLI, then `claude` CLI, then the user's default shell (see `resolveShell()` in `main.js`)
-- The terminal environment is seeded with four env vars that form the agent-to-browser contract:
+- The terminal spawns whatever shell `NORI_BROWSER_SHELL` specifies, falling back to Claude Code CLI (launched with isolated settings and a session-specific system prompt), then the user's default shell (see `resolveShell()` in `main.js`)
+- The terminal environment is seeded with env vars that form the agent-to-browser contract:
 
 | Env Var | Purpose |
 |---|---|
@@ -20,13 +20,15 @@ Path: @/
 | `PLAYWRIGHT_CDP_URL` | Full CDP URL (`http://localhost:<port>`) |
 | `NODE_PATH` | Points to project `node_modules` so `require('playwright')` resolves from any cwd |
 | `NORI_BROWSER_DIR` | Project root, so agent can locate `playwright-bridge.js` |
+| `NORI_SESSION_DIR` | Temp directory containing `system-prompt.txt` with browser connection instructions |
 
 - The renderer communicates with the main process exclusively through IPC channels defined in `preload.js` -- no direct Node access from the renderer
 - `playwright-bridge.js` connects over CDP, acts, and disconnects on every invocation -- it holds no persistent state or connections
 
 ### Core Implementation
 
-- **Application lifecycle**: `app.whenReady()` calls `createWindow()` then `startTerminal()`. The `BrowserView` loads `about:blank` initially. URL navigation is driven either by the user typing into the toolbar URL bar or by an agent calling the bridge CLI
+- **Application lifecycle**: `app.whenReady()` calls `createWindow()`, which triggers `startTerminal()` via IPC. `startTerminal()` creates a session directory, resolves the shell, and spawns the pty. The `BrowserView` loads `about:blank` initially. URL navigation is driven either by the user typing into the toolbar URL bar or by an agent calling the bridge CLI
+- **Session isolation**: `createSessionDir()` writes a `system-prompt.txt` into a temp directory (`os.tmpdir()/nori-browser-*`). This prompt tells Claude Code how to connect to the browser (CDP port, bridge path, available commands) and instructs it not to use MCP tools, create worktrees, or run `git init`. When Claude Code is detected, it is launched with `--setting-sources ''` (skips all file-based settings), `--settings '{"claudeMdExcludes":["**"]}'` (excludes all CLAUDE.md files), `--append-system-prompt-file` (injects the session prompt), and `--dangerously-skip-permissions` (no interactive permission prompts). This approach preserves OAuth/keychain authentication while isolating the session from user config — `--bare` is not used because it blocks all auth. The session directory is cleaned up in both `before-quit` and `window-all-closed` handlers
 - **Browser-terminal integration flow**:
 ```
 Agent types in terminal
@@ -47,7 +49,8 @@ Agent types in terminal
 - `playwright` is a runtime dependency (not dev-only) because the bridge CLI needs it when invoked from the terminal
 - The CDP port defaults to `19222` but is configurable via `NORI_BROWSER_CDP_PORT`. Tests use `19223` to avoid collisions with a running instance
 - URL bar navigation auto-prepends `https://` if the URL lacks a protocol scheme (see `ipcMain.on('navigate', ...)` in `main.js`)
-- The `resolveShell()` function uses synchronous `execSync('which ...')` calls at startup -- if both `nori` and `claude` are missing, it falls back silently to the default shell
+- The `resolveShell()` function uses synchronous `execSync('which ...')` calls at startup -- if `claude` is missing, it falls back silently to the default shell. The function takes a `sessionDir` parameter so it can reference the session prompt file when constructing Claude Code args
 - Each bridge CLI invocation opens and closes a full CDP connection. This is intentional -- statelessness means no zombie connections, but it adds latency per command
+- Session directory cleanup happens in two places (`before-quit` and `window-all-closed`) to handle both graceful quit and window-close scenarios. The `cleanupSessionDir()` function is idempotent -- it nulls the reference after removal
 
 Created and maintained by Nori.

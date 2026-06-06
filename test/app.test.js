@@ -1,6 +1,7 @@
 const { test, expect } = require('@playwright/test');
 const { _electron: electron } = require('playwright');
 const { chromium } = require('playwright');
+const fs = require('fs');
 const http = require('http');
 const net = require('net');
 const path = require('path');
@@ -95,7 +96,10 @@ test.describe('Nori Browser', () => {
   });
 
   test.afterAll(async () => {
-    if (electronApp) await electronApp.close();
+    if (electronApp) {
+      await electronApp.close();
+      electronApp = null;
+    }
     if (testServer) await new Promise((resolve) => testServer.close(resolve));
   });
 
@@ -208,5 +212,49 @@ test.describe('Nori Browser', () => {
     } finally {
       socket.destroy();
     }
+  });
+
+  test('session directory with system prompt is created on startup', async () => {
+    const socket = await connectControl();
+    try {
+      const dirOutput = await sendAndWait(socket, 'echo SESSION_DIR=$NORI_SESSION_DIR\n', 'SESSION_DIR=/', 5000);
+      const match = dirOutput.match(/SESSION_DIR=(\/[^\s\r\n]+)/);
+      expect(match).toBeTruthy();
+      const sessionDir = match[1];
+
+      const existsOutput = await sendAndWait(socket, `test -f "$NORI_SESSION_DIR/system-prompt.txt" && echo PROMPT_EXISTS\n`, 'PROMPT_EXISTS', 5000);
+      expect(existsOutput).toContain('PROMPT_EXISTS');
+    } finally {
+      socket.destroy();
+    }
+  });
+
+  test('system prompt contains correct CDP port and bridge path', async () => {
+    const socket = await connectControl();
+    try {
+      const output = await sendAndWait(socket, 'cat "$NORI_SESSION_DIR/system-prompt.txt"\n', String(CDP_PORT), 5000);
+      expect(output).toContain(String(CDP_PORT));
+      expect(output).toContain('playwright-bridge.js');
+    } finally {
+      socket.destroy();
+    }
+  });
+
+  test('session directory is cleaned up on exit', async () => {
+    const socket = await connectControl();
+    let sessionDir;
+    try {
+      const dirOutput = await sendAndWait(socket, 'echo SESSION_DIR=$NORI_SESSION_DIR\n', 'SESSION_DIR=/', 5000);
+      const match = dirOutput.match(/SESSION_DIR=(\/[^\s\r\n]+)/);
+      expect(match).toBeTruthy();
+      sessionDir = match[1];
+    } finally {
+      socket.destroy();
+    }
+
+    await electronApp.close();
+    electronApp = null;
+
+    expect(fs.existsSync(sessionDir)).toBe(false);
   });
 });

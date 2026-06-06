@@ -1,6 +1,8 @@
 const { app, BrowserWindow, BrowserView, ipcMain } = require('electron');
 const net = require('net');
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
 const pty = require('node-pty');
 
 const CDP_PORT = parseInt(process.env.NORI_BROWSER_CDP_PORT || '19222');
@@ -13,6 +15,7 @@ let ptyProcess;
 let controlServer;
 let controlSockets = new Set();
 let sidebarWidth = 400;
+let sessionDir;
 const TOOLBAR_HEIGHT = 48;
 
 app.whenReady().then(() => {
@@ -85,9 +88,51 @@ function updateBrowserViewBounds() {
   });
 }
 
+function createSessionDir() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nori-browser-'));
+  const bridgePath = path.join(__dirname, 'playwright-bridge.js');
+  const prompt = `You are connected to a browser via Chrome DevTools Protocol.
+
+CDP Port: ${CDP_PORT}
+CDP URL: http://localhost:${CDP_PORT}
+
+To interact with the browser, use the playwright-bridge CLI:
+
+  node ${bridgePath} <command> [args]
+
+Commands:
+  status              - Get current page URL, title, and page count
+  navigate <url>      - Navigate to a URL
+  snapshot            - Get accessibility tree snapshot
+  click <selector>    - Click an element
+  fill <selector> <v> - Fill an input field
+  eval <expression>   - Evaluate JavaScript on the page
+  content             - Get page text content
+  screenshot [path]   - Take a screenshot
+
+You can also use Playwright directly by connecting over CDP:
+
+  const { chromium } = require('playwright');
+  const browser = await chromium.connectOverCDP('http://localhost:${CDP_PORT}');
+
+Script the browser directly. Do not use MCP tools or Playwright tool calls.
+Do not create git worktrees or run git init.
+`;
+  fs.writeFileSync(path.join(dir, 'system-prompt.txt'), prompt);
+  return dir;
+}
+
+function cleanupSessionDir() {
+  if (sessionDir) {
+    fs.rmSync(sessionDir, { recursive: true, force: true });
+    sessionDir = null;
+  }
+}
+
 function startTerminal() {
   if (ptyProcess) return;
-  const { command, args } = resolveShell();
+  sessionDir = createSessionDir();
+  const { command, args } = resolveShell(sessionDir);
   ptyProcess = pty.spawn(command, args, {
     name: 'xterm-256color',
     cols: 80,
@@ -99,6 +144,7 @@ function startTerminal() {
       PLAYWRIGHT_CDP_URL: `http://localhost:${CDP_PORT}`,
       NODE_PATH: [path.join(__dirname, 'node_modules'), process.env.NODE_PATH].filter(Boolean).join(path.delimiter),
       NORI_BROWSER_DIR: __dirname,
+      NORI_SESSION_DIR: sessionDir,
     },
   });
 
@@ -142,19 +188,24 @@ function startControlServer() {
   });
 }
 
-function resolveShell() {
+function resolveShell(sessionDir) {
   const envShell = process.env.NORI_BROWSER_SHELL;
   if (envShell) return { command: envShell, args: [] };
 
   const { execSync } = require('child_process');
   try {
-    const noriPath = execSync('which nori', { encoding: 'utf-8' }).trim();
-    if (noriPath) return { command: noriPath, args: [] };
-  } catch {}
-
-  try {
     const claudePath = execSync('which claude', { encoding: 'utf-8' }).trim();
-    if (claudePath) return { command: claudePath, args: [] };
+    if (claudePath) {
+      return {
+        command: claudePath,
+        args: [
+          '--setting-sources', '',
+          '--settings', JSON.stringify({ claudeMdExcludes: ['**'] }),
+          '--append-system-prompt-file', path.join(sessionDir, 'system-prompt.txt'),
+          '--dangerously-skip-permissions',
+        ],
+      };
+    }
   } catch {}
 
   return { command: process.env.SHELL || '/bin/bash', args: [] };
@@ -201,9 +252,14 @@ ipcMain.on('sidebar-resize', (_, width) => {
   updateBrowserViewBounds();
 });
 
+app.on('before-quit', () => {
+  cleanupSessionDir();
+});
+
 app.on('window-all-closed', () => {
   if (ptyProcess) ptyProcess.kill();
   if (controlServer) controlServer.close();
   for (const socket of controlSockets) socket.destroy();
+  cleanupSessionDir();
   app.quit();
 });

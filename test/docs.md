@@ -5,7 +5,7 @@ Path: @/test
 ### Overview
 
 - End-to-end Playwright tests for the Nori Browser Electron app
-- Tests launch the real Electron app with a local HTTP test server, verifying the full integration: UI elements, terminal I/O, URL bar navigation, CDP connectivity, environment variables, and the agent bridge CLI workflow
+- Tests launch the real Electron app with a local HTTP test server, verifying the full integration: UI elements, terminal I/O, URL bar navigation, CDP connectivity, environment variables, session directory lifecycle, and the agent bridge CLI workflow
 
 ### How it fits into the larger codebase
 
@@ -17,15 +17,16 @@ Path: @/test
 ### Core Implementation
 
 - **Test server**: A minimal `http.createServer` spun up in `beforeAll` on a random port, serving `/page-a` and `/page-b` HTML pages. Eliminates external network dependencies
-- **Electron launch**: `electron.launch()` with the app's `main.js`, custom env vars, waits for `domcontentloaded` + 1s settle time
-- **Terminal interaction pattern**: Tests click `.xterm-screen`, type a command via `window.keyboard`, then use `expect.poll()` to wait for expected output in the terminal's text content
-- **Bridge CLI tests**: Verify the real agent workflow -- type `node $NORI_BROWSER_DIR/playwright-bridge.js <command>` into the terminal, wait for the status marker (e.g., `NAVIGATE_OK`, `STATUS_OK`), and cross-check browser state (URL bar value, page content)
+- **Electron launch**: `electron.launch()` with the app's `main.js`, custom env vars, waits for the renderer window and control socket to be ready
+- **Terminal interaction**: Tests use a TCP control socket (`connectControl()` / `sendAndWait()`) to send commands and wait for marker strings in terminal output. This is more reliable than UI-based xterm interaction
+- **Bridge CLI tests**: Verify the real agent workflow -- send `node $NORI_BROWSER_DIR/playwright-bridge.js <command>` via the control socket, wait for the status marker (e.g., `NAVIGATE_OK`, `STATUS_OK`), and cross-check browser state (URL bar value, page content)
+- **Session directory tests**: Verify `NORI_SESSION_DIR` env var is set, `system-prompt.txt` exists within it and contains the correct CDP port and bridge path, and that the session directory is removed when the app closes
 
 ### Things to Know
 
 - All tests run in a single `test.describe` block sharing one Electron app instance. Test order matters -- later tests depend on browser state from earlier navigation
-- Terminal output assertions use `expect.poll()` instead of `waitForTimeout` -- they poll the xterm screen's `textContent` until the expected string appears or timeout hits
+- The session cleanup test (`session directory is cleaned up on exit`) closes the Electron app and must run last. The `afterAll` handler guards against a null `electronApp` since this test sets it to null after closing
 - The test server listens on `127.0.0.1` with port `0` (OS-assigned) to avoid port conflicts
-- Tests verify the four environment variables (`NORI_BROWSER_CDP_PORT`, `PLAYWRIGHT_CDP_URL`, `NODE_PATH`, `NORI_BROWSER_DIR`) are correctly injected into the terminal session
+- Tests verify environment variables (`NORI_BROWSER_CDP_PORT`, `PLAYWRIGHT_CDP_URL`, `NODE_PATH`, `NORI_BROWSER_DIR`, `NORI_SESSION_DIR`) are correctly injected into the terminal session
 
 Created and maintained by Nori.
