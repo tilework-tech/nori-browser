@@ -1,4 +1,4 @@
-const { app, BrowserWindow, BrowserView, ipcMain } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, Menu } = require('electron');
 const net = require('net');
 const path = require('path');
 const fs = require('fs');
@@ -10,13 +10,17 @@ const CONTROL_PORT = parseInt(process.env.NORI_BROWSER_CONTROL_PORT || '0');
 app.commandLine.appendSwitch('remote-debugging-port', String(CDP_PORT));
 
 let mainWindow;
-let browserView;
 let ptyProcess;
 let controlServer;
 let controlSockets = new Set();
 let sidebarWidth = 400;
 let sessionDir;
 const TOOLBAR_HEIGHT = 48;
+const TAB_BAR_HEIGHT = 36;
+
+let tabs = [];
+let activeTabId = null;
+let nextTabId = 1;
 
 app.whenReady().then(() => {
   createWindow();
@@ -36,40 +40,42 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
-  browserView = new BrowserView({
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-  });
-  mainWindow.setBrowserView(browserView);
-  browserView.webContents.loadURL('about:blank');
-
-  mainWindow.once('ready-to-show', updateBrowserViewBounds);
-  mainWindow.on('resize', updateBrowserViewBounds);
-  mainWindow.on('maximize', updateBrowserViewBounds);
-  mainWindow.on('unmaximize', updateBrowserViewBounds);
+  mainWindow.once('ready-to-show', updateAllTabBounds);
+  mainWindow.on('resize', updateAllTabBounds);
+  mainWindow.on('maximize', updateAllTabBounds);
+  mainWindow.on('unmaximize', updateAllTabBounds);
 
   mainWindow.webContents.once('did-finish-load', () => {
-    updateBrowserViewBounds();
+    createTab('about:blank');
     mainWindow.webContents.send('cdp-port', CDP_PORT);
   });
 
-  browserView.webContents.on('did-navigate', (_, url) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('url-changed', url);
-    }
-  });
-  browserView.webContents.on('did-navigate-in-page', (_, url) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('url-changed', url);
-    }
-  });
-  browserView.webContents.on('page-title-updated', (_, title) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.setTitle(`${title} — Nori Browser`);
-    }
-  });
+  const menu = Menu.buildFromTemplate([
+    {
+      label: 'File',
+      submenu: [
+        { label: 'New Tab', accelerator: 'CmdOrCtrl+T', click: () => createTab('about:blank') },
+        { label: 'Close Tab', accelerator: 'CmdOrCtrl+W', click: () => { if (activeTabId !== null) closeTab(activeTabId); } },
+      ],
+    },
+    {
+      label: 'Tab',
+      submenu: [
+        { label: 'Next Tab', accelerator: 'Ctrl+Tab', click: () => switchToNextTab() },
+        { label: 'Previous Tab', accelerator: 'Ctrl+Shift+Tab', click: () => switchToPrevTab() },
+        { label: 'Move Tab Right', accelerator: 'Ctrl+Shift+PageDown', click: () => moveTabRight() },
+        { label: 'Move Tab Left', accelerator: 'Ctrl+Shift+PageUp', click: () => moveTabLeft() },
+        { type: 'separator' },
+        ...Array.from({ length: 8 }, (_, i) => ({
+          label: `Tab ${i + 1}`,
+          accelerator: `CmdOrCtrl+${i + 1}`,
+          click: () => { if (i < tabs.length) switchTab(tabs[i].id); },
+        })),
+        { label: 'Last Tab', accelerator: 'CmdOrCtrl+9', click: () => { if (tabs.length > 0) switchTab(tabs[tabs.length - 1].id); } },
+      ],
+    },
+  ]);
+  Menu.setApplicationMenu(menu);
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -77,15 +83,163 @@ function createWindow() {
   });
 }
 
-function updateBrowserViewBounds() {
-  if (!browserView || !mainWindow || mainWindow.isDestroyed()) return;
-  const [width, height] = mainWindow.getContentSize();
-  browserView.setBounds({
-    x: sidebarWidth + 4,
-    y: TOOLBAR_HEIGHT,
-    width: Math.max(0, width - sidebarWidth - 4),
-    height: Math.max(0, height - TOOLBAR_HEIGHT),
+function createTab(url) {
+  const id = String(nextTabId++);
+  const view = new WebContentsView({
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
   });
+
+  mainWindow.contentView.addChildView(view);
+  view.setVisible(false);
+
+  const tab = { id, view, title: 'New Tab', url: url || 'about:blank' };
+  tabs.push(tab);
+
+  view.webContents.on('did-navigate', (_, navUrl) => {
+    tab.url = navUrl;
+    if (activeTabId === id && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('url-changed', navUrl);
+    }
+    sendTabsChanged();
+  });
+
+  view.webContents.on('did-navigate-in-page', (_, navUrl) => {
+    tab.url = navUrl;
+    if (activeTabId === id && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('url-changed', navUrl);
+    }
+    sendTabsChanged();
+  });
+
+  view.webContents.on('page-title-updated', (_, title) => {
+    tab.title = title;
+    if (activeTabId === id && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setTitle(`${title} — Nori Browser`);
+    }
+    sendTabsChanged();
+  });
+
+  view.webContents.setWindowOpenHandler(({ url: openUrl }) => {
+    createTab(openUrl);
+    return { action: 'deny' };
+  });
+
+  setTabBounds(view);
+  switchTab(id);
+  view.webContents.loadURL(url || 'about:blank');
+
+  return id;
+}
+
+function closeTab(tabId) {
+  const idx = tabs.findIndex(t => t.id === tabId);
+  if (idx === -1) return;
+
+  const tab = tabs[idx];
+  mainWindow.contentView.removeChildView(tab.view);
+  tab.view.webContents.close();
+  tabs.splice(idx, 1);
+
+  if (tabs.length === 0) {
+    mainWindow.close();
+    return;
+  }
+
+  if (activeTabId === tabId) {
+    const newIdx = Math.min(idx, tabs.length - 1);
+    switchTab(tabs[newIdx].id);
+  } else {
+    sendTabsChanged();
+  }
+}
+
+function switchTab(tabId) {
+  const tab = tabs.find(t => t.id === tabId);
+  if (!tab) return;
+
+  if (activeTabId !== null) {
+    const oldTab = tabs.find(t => t.id === activeTabId);
+    if (oldTab) oldTab.view.setVisible(false);
+  }
+
+  activeTabId = tabId;
+  tab.view.setVisible(true);
+  setTabBounds(tab.view);
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('url-changed', tab.url);
+    mainWindow.setTitle(`${tab.title} — Nori Browser`);
+  }
+
+  sendTabsChanged();
+}
+
+function switchToNextTab() {
+  if (tabs.length < 2) return;
+  const idx = tabs.findIndex(t => t.id === activeTabId);
+  const nextIdx = (idx + 1) % tabs.length;
+  switchTab(tabs[nextIdx].id);
+}
+
+function switchToPrevTab() {
+  if (tabs.length < 2) return;
+  const idx = tabs.findIndex(t => t.id === activeTabId);
+  const prevIdx = (idx - 1 + tabs.length) % tabs.length;
+  switchTab(tabs[prevIdx].id);
+}
+
+function reorderTab(tabId, newIndex) {
+  const idx = tabs.findIndex(t => t.id === tabId);
+  if (idx === -1) return;
+  const clamped = Math.max(0, Math.min(tabs.length - 1, newIndex));
+  const [tab] = tabs.splice(idx, 1);
+  tabs.splice(clamped, 0, tab);
+  sendTabsChanged();
+}
+
+function moveTabRight() {
+  const idx = tabs.findIndex(t => t.id === activeTabId);
+  if (idx === -1 || idx >= tabs.length - 1) return;
+  reorderTab(activeTabId, idx + 1);
+}
+
+function moveTabLeft() {
+  const idx = tabs.findIndex(t => t.id === activeTabId);
+  if (idx <= 0) return;
+  reorderTab(activeTabId, idx - 1);
+}
+
+function getActiveView() {
+  const tab = tabs.find(t => t.id === activeTabId);
+  return tab ? tab.view : null;
+}
+
+function sendTabsChanged() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send('tabs-changed', {
+    tabs: tabs.map(t => ({ id: t.id, title: t.title, url: t.url })),
+    activeTabId,
+  });
+}
+
+function setTabBounds(view) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const [width, height] = mainWindow.getContentSize();
+  view.setBounds({
+    x: sidebarWidth + 4,
+    y: TOOLBAR_HEIGHT + TAB_BAR_HEIGHT,
+    width: Math.max(0, width - sidebarWidth - 4),
+    height: Math.max(0, height - TOOLBAR_HEIGHT - TAB_BAR_HEIGHT),
+  });
+}
+
+function updateAllTabBounds() {
+  for (const tab of tabs) {
+    setTabBounds(tab.view);
+  }
 }
 
 function createSessionDir() {
@@ -109,6 +263,10 @@ Commands:
   eval <expression>   - Evaluate JavaScript on the page
   content             - Get page text content
   screenshot [path]   - Take a screenshot
+  list-tabs           - List all open tabs
+  new-tab [url]       - Open a new tab
+  close-tab [index]   - Close a tab by index
+  switch-tab <index>  - Switch to a tab by index
 
 You can also use Playwright directly by connecting over CDP:
 
@@ -226,30 +384,57 @@ ipcMain.on('terminal-resize', (_, { cols, rows }) => {
 });
 
 ipcMain.on('navigate', (_, url) => {
-  if (!browserView) return;
+  const view = getActiveView();
+  if (!view) return;
   if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-  browserView.webContents.loadURL(url);
+  view.webContents.loadURL(url);
 });
 
 ipcMain.on('go-back', () => {
-  if (browserView && browserView.webContents.canGoBack()) {
-    browserView.webContents.goBack();
+  const view = getActiveView();
+  if (view && view.webContents.canGoBack()) {
+    view.webContents.goBack();
   }
 });
 
 ipcMain.on('go-forward', () => {
-  if (browserView && browserView.webContents.canGoForward()) {
-    browserView.webContents.goForward();
+  const view = getActiveView();
+  if (view && view.webContents.canGoForward()) {
+    view.webContents.goForward();
   }
 });
 
 ipcMain.on('reload', () => {
-  if (browserView) browserView.webContents.reload();
+  const view = getActiveView();
+  if (view) view.webContents.reload();
 });
 
 ipcMain.on('sidebar-resize', (_, width) => {
   sidebarWidth = width;
-  updateBrowserViewBounds();
+  updateAllTabBounds();
+});
+
+ipcMain.on('create-tab', (_, url) => {
+  createTab(url || 'about:blank');
+});
+
+ipcMain.on('close-tab', (_, tabId) => {
+  closeTab(tabId);
+});
+
+ipcMain.on('switch-tab', (_, tabId) => {
+  switchTab(tabId);
+});
+
+ipcMain.on('reorder-tab', (_, tabId, newIndex) => {
+  reorderTab(tabId, newIndex);
+});
+
+ipcMain.handle('get-tabs', () => {
+  return {
+    tabs: tabs.map(t => ({ id: t.id, title: t.title, url: t.url })),
+    activeTabId,
+  };
 });
 
 app.on('before-quit', () => {

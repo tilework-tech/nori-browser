@@ -6063,6 +6063,68 @@ WARNING: This link could potentially be dangerous`)) {
   window.api.onCdpPort((port) => {
     document.getElementById("cdp-info").textContent = `CDP :${port}`;
   });
+  var tabList = document.getElementById("tab-list");
+  var newTabBtn = document.getElementById("new-tab-btn");
+  newTabBtn.addEventListener("click", () => {
+    window.api.createTab();
+  });
+  var dragTabId = null;
+  function renderTabs(data) {
+    tabList.innerHTML = "";
+    for (const tab of data.tabs) {
+      const el = document.createElement("div");
+      el.className = "tab" + (tab.id === data.activeTabId ? " active" : "");
+      el.dataset.tabId = tab.id;
+      el.draggable = true;
+      const title = document.createElement("span");
+      title.className = "tab-title";
+      title.textContent = tab.title || "New Tab";
+      el.appendChild(title);
+      const close = document.createElement("button");
+      close.className = "tab-close";
+      close.textContent = "\xD7";
+      close.addEventListener("click", (e) => {
+        e.stopPropagation();
+        window.api.closeTab(tab.id);
+      });
+      el.appendChild(close);
+      el.addEventListener("click", () => {
+        window.api.switchTab(tab.id);
+      });
+      el.addEventListener("dragstart", (e) => {
+        dragTabId = tab.id;
+        el.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+      });
+      el.addEventListener("dragend", () => {
+        el.classList.remove("dragging");
+        dragTabId = null;
+        tabList.querySelectorAll(".tab").forEach((t) => t.classList.remove("drag-over"));
+      });
+      el.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        if (dragTabId && dragTabId !== tab.id) {
+          el.classList.add("drag-over");
+        }
+      });
+      el.addEventListener("dragleave", () => {
+        el.classList.remove("drag-over");
+      });
+      el.addEventListener("drop", (e) => {
+        e.preventDefault();
+        el.classList.remove("drag-over");
+        if (dragTabId && dragTabId !== tab.id) {
+          const dropIndex = data.tabs.findIndex((t) => t.id === tab.id);
+          window.api.reorderTab(dragTabId, dropIndex);
+        }
+      });
+      tabList.appendChild(el);
+    }
+  }
+  window.api.onTabsChanged((data) => {
+    renderTabs(data);
+  });
   var divider = document.getElementById("divider");
   var sidebar = document.getElementById("sidebar");
   var isDragging = false;
