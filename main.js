@@ -37,7 +37,7 @@ function createWindow() {
     },
   });
   mainWindow.setBrowserView(browserView);
-  browserView.webContents.loadURL('https://www.google.com');
+  browserView.webContents.loadURL('about:blank');
 
   mainWindow.once('ready-to-show', updateBrowserViewBounds);
   mainWindow.on('resize', updateBrowserViewBounds);
@@ -93,6 +93,8 @@ function startTerminal() {
       ...process.env,
       NORI_BROWSER_CDP_PORT: String(CDP_PORT),
       PLAYWRIGHT_CDP_URL: `http://localhost:${CDP_PORT}`,
+      NODE_PATH: [path.join(__dirname, 'node_modules'), process.env.NODE_PATH].filter(Boolean).join(path.delimiter),
+      NORI_BROWSER_DIR: __dirname,
     },
   });
 
