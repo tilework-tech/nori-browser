@@ -21,3 +21,19 @@ Build this out. The most important piece: you have to additionally build a test 
 
 It does not have to use nori cli if that is too complicated. You can find the code for the nori cli at ~/code/nori/nori-cli if that helps.
 I just like the nori-cli because it has built in acp integration and a bunch of other nice features.
+
+For verification, you should have a complete e2e test. The current one may not suffice, so validate that it does.
+
+An actual e2e test would be:
+  - start the app
+  - confirm that the webbrowser loads
+  - confirm that the nori session loads
+  - ask nori to modify the webbrowser in some way
+  - confirm the html in the webpage actually is modified'
+
+The system should itself be fully scriptable. The nori browser should expose endpoints (or some other method of driving the application) so an agent can fully test and verify that the system is working as expected.
+
+Note: the nori cli driving the playwright instance should NOT be using an MCP or tools. Instead, the agent should be given instructions on:
+- how to access the browser
+- told explicitly to script requests to the browser instead of relying on mcp tool calls and the like
+- everything should be done by scripting the browser
