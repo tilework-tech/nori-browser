@@ -5,7 +5,7 @@ Path: @/test
 ### Overview
 
 - End-to-end Playwright tests for the Nori Browser Electron app
-- Tests launch the real Electron app with a local HTTP test server, verifying the full integration: UI elements, terminal I/O, URL bar navigation, CDP connectivity, environment variables, session directory lifecycle, and the agent bridge CLI workflow
+- Tests launch the real Electron app with a local HTTP test server, verifying the full integration: UI elements, terminal I/O, URL bar navigation, CDP connectivity, environment variables, window state transitions (resize, maximize), session directory lifecycle, and the agent bridge CLI workflow
 
 ### How it fits into the larger codebase
 

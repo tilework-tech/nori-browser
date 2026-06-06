@@ -39,7 +39,7 @@ Agent types in terminal
   -> terminal shows output to agent
 ```
 - **IPC channels** in `preload.js` expose a `window.api` surface: terminal I/O (`terminal-input`, `terminal-data`, `terminal-exit`), navigation (`navigate`, `go-back`, `go-forward`, `reload`), layout (`sidebar-resize`), and state sync (`url-changed`, `cdp-port`)
-- **WebContentsView bounds** are computed from `sidebarWidth` and `TOOLBAR_HEIGHT` constants. The `WebContentsView` is added as a child of `mainWindow.contentView` via `addChildView()`. Bounds are recalculated on all window state transitions: `resize`, `maximize`, `unmaximize`, `enter-full-screen`, and `leave-full-screen`. The sidebar is also resizable via a drag divider in the renderer; resize events propagate through `sidebar-resize` IPC to recalculate bounds
+- **WebContentsView bounds** are computed from `sidebarWidth` and `TOOLBAR_HEIGHT` constants. The `WebContentsView` is added as a child of `mainWindow.contentView` via `addChildView()`. Bounds are recalculated on all window state transitions: `resize`, `maximize`, `unmaximize`, `enter-full-screen`, and `leave-full-screen`. The `maximize` and `unmaximize` handlers use a deferred second call (`setTimeout(updateBrowserViewBounds, 100)`) in addition to the immediate call -- see "Things to Know" for why. The sidebar is also resizable via a drag divider in the renderer; resize events propagate through `sidebar-resize` IPC to recalculate bounds
 - **Bridge CLI** (`playwright-bridge.js`) supports commands: `status`, `navigate`, `snapshot`, `click`, `fill`, `eval`, `content`, `screenshot`. It also exports `connectToBrowser()` for programmatic use
 - **Build step**: `renderer/renderer.js` is bundled via esbuild into `renderer/bundle.js` before the app starts or tests run
 
@@ -50,6 +50,7 @@ Agent types in terminal
 - The CDP port defaults to `19222` but is configurable via `NORI_BROWSER_CDP_PORT`. Tests use `19223` to avoid collisions with a running instance
 - URL bar navigation auto-prepends `https://` if the URL lacks a protocol scheme (see `ipcMain.on('navigate', ...)` in `main.js`)
 - The `resolveShell()` function uses synchronous `execSync('which ...')` calls at startup -- if `claude` is missing, it falls back silently to the default shell. The function takes a `sessionDir` parameter so it can reference the session prompt file when constructing Claude Code args
+- On Linux, the `maximize` and `unmaximize` window events fire before the window manager has updated `mainWindow.getContentSize()`. A single `updateBrowserViewBounds()` call in the event handler reads stale dimensions, leaving the `WebContentsView` at its pre-maximize size. The workaround is a deferred second call via `setTimeout(fn, 100)` that runs after the WM has settled. The `resize` event (manual drag) does not need this because the WM updates dimensions synchronously for drag operations
 - Each bridge CLI invocation opens and closes a full CDP connection. This is intentional -- statelessness means no zombie connections, but it adds latency per command
 - Session directory cleanup happens in two places (`before-quit` and `window-all-closed`) to handle both graceful quit and window-close scenarios. The `cleanupSessionDir()` function is idempotent -- it nulls the reference after removal
 

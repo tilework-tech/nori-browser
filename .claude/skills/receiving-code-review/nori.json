@@ -1,0 +1,7 @@
+{
+  "name": "receiving-code-review",
+  "version": "1.0.6",
+  "type": "skill",
+  "description": "Use when receiving code review feedback, before implementing suggestions, especially if feedback seems unclear or technically questionable - requires technical rigor and verification, not performative agreement or blind implementation",
+  "registryURL": "http://noriskillsets.dev"
+}
