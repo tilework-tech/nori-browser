@@ -116,7 +116,7 @@ function createTab(url, insertIndex) {
   mainWindow.contentView.addChildView(view);
   view.setVisible(false);
 
-  const tab = { id, view, title: 'New Tab', url: url || 'about:blank' };
+  const tab = { id, view, title: 'New Tab', url: url || 'about:blank', pinned: false };
   if (insertIndex !== undefined && insertIndex >= 0 && insertIndex <= tabs.length) {
     tabs.splice(insertIndex, 0, tab);
   } else {
@@ -230,47 +230,86 @@ function switchToPrevTab() {
 function reorderTab(tabId, newIndex) {
   const idx = tabs.findIndex(t => t.id === tabId);
   if (idx === -1) return;
-  const clamped = Math.max(0, Math.min(tabs.length - 1, newIndex));
-  const [tab] = tabs.splice(idx, 1);
-  tabs.splice(clamped, 0, tab);
+  const tab = tabs[idx];
+  const pinnedCount = getPinnedCount();
+  let clamped;
+  if (tab.pinned) {
+    clamped = Math.max(0, Math.min(pinnedCount - 1, newIndex));
+  } else {
+    clamped = Math.max(pinnedCount, Math.min(tabs.length - 1, newIndex));
+  }
+  const [removed] = tabs.splice(idx, 1);
+  tabs.splice(clamped, 0, removed);
   sendTabsChanged();
 }
 
 function moveTabRight() {
   const idx = tabs.findIndex(t => t.id === activeTabId);
   if (idx === -1 || idx >= tabs.length - 1) return;
+  const tab = tabs[idx];
+  if (tab.pinned && idx >= getPinnedCount() - 1) return;
   reorderTab(activeTabId, idx + 1);
 }
 
 function moveTabLeft() {
   const idx = tabs.findIndex(t => t.id === activeTabId);
   if (idx <= 0) return;
+  const tab = tabs[idx];
+  if (!tab.pinned && idx <= getPinnedCount()) return;
   reorderTab(activeTabId, idx - 1);
+}
+
+function getPinnedCount() {
+  return tabs.filter(t => t.pinned).length;
+}
+
+function pinTab(tabId) {
+  const tab = tabs.find(t => t.id === tabId);
+  if (!tab || tab.pinned) return;
+  tab.pinned = true;
+  const idx = tabs.indexOf(tab);
+  tabs.splice(idx, 1);
+  const pinnedCount = getPinnedCount();
+  tabs.splice(pinnedCount, 0, tab);
+  sendTabsChanged();
+}
+
+function unpinTab(tabId) {
+  const tab = tabs.find(t => t.id === tabId);
+  if (!tab || !tab.pinned) return;
+  tab.pinned = false;
+  const idx = tabs.indexOf(tab);
+  tabs.splice(idx, 1);
+  const pinnedCount = getPinnedCount();
+  tabs.splice(pinnedCount, 0, tab);
+  sendTabsChanged();
 }
 
 function reopenClosedTab() {
   if (closedTabStack.length === 0) return;
   const entry = closedTabStack.pop();
-  const insertAt = Math.min(entry.index, tabs.length);
+  const pinnedCount = getPinnedCount();
+  const insertAt = Math.max(pinnedCount, Math.min(entry.index, tabs.length));
   createTab(entry.url, insertAt);
 }
 
 function duplicateTab(tabId) {
-  const idx = tabs.findIndex(t => t.id === tabId);
-  if (idx === -1) return;
-  createTab(tabs[idx].url, idx + 1);
+  const tab = tabs.find(t => t.id === tabId);
+  if (!tab) return;
+  const insertAt = tab.pinned ? getPinnedCount() : tabs.indexOf(tab) + 1;
+  createTab(tab.url, insertAt);
 }
 
 function closeOtherTabs(tabId) {
   if (!tabs.some(t => t.id === tabId)) return;
-  const toClose = tabs.filter(t => t.id !== tabId).map(t => t.id);
+  const toClose = tabs.filter(t => t.id !== tabId && !t.pinned).map(t => t.id);
   for (const id of toClose) closeTab(id);
 }
 
 function closeTabsToRight(tabId) {
   const idx = tabs.findIndex(t => t.id === tabId);
   if (idx === -1) return;
-  const toClose = tabs.slice(idx + 1).map(t => t.id);
+  const toClose = tabs.slice(idx + 1).filter(t => !t.pinned).map(t => t.id);
   for (const id of toClose) closeTab(id);
 }
 
@@ -282,7 +321,7 @@ function getActiveView() {
 function sendTabsChanged() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.send('tabs-changed', {
-    tabs: tabs.map(t => ({ id: t.id, title: t.title, url: t.url })),
+    tabs: tabs.map(t => ({ id: t.id, title: t.title, url: t.url, pinned: t.pinned })),
     activeTabId,
   });
 }
@@ -351,6 +390,8 @@ Additional tab operations are available via the renderer page's window.api:
   window.api.closeTabsToRight(tabId)  - Close all tabs to the right of the specified one
   window.api.reopenClosedTab()        - Reopen the most recently closed tab
   window.api.reorderTab(tabId, index) - Move a tab to a new position
+  window.api.pinTab(tabId)            - Pin a tab (moves to left, shows favicon only)
+  window.api.unpinTab(tabId)          - Unpin a tab
 
 You can also use Playwright directly by connecting over CDP:
 
@@ -533,6 +574,14 @@ ipcMain.on('close-tabs-to-right', (_, tabId) => {
   closeTabsToRight(tabId);
 });
 
+ipcMain.on('pin-tab', (_, tabId) => {
+  pinTab(tabId);
+});
+
+ipcMain.on('unpin-tab', (_, tabId) => {
+  unpinTab(tabId);
+});
+
 ipcMain.on('tab-context-menu', (event, tabId) => {
   const tab = tabs.find(t => t.id === tabId);
   if (!tab) return;
@@ -540,6 +589,8 @@ ipcMain.on('tab-context-menu', (event, tabId) => {
     { label: 'New Tab', click: () => createTab('about:blank') },
     { label: 'Reload', click: () => { const t = tabs.find(t => t.id === tabId); if (t) t.view.webContents.reload(); } },
     { label: 'Duplicate', click: () => duplicateTab(tabId) },
+    { type: 'separator' },
+    { label: tab.pinned ? 'Unpin Tab' : 'Pin Tab', click: tab.pinned ? () => unpinTab(tabId) : () => pinTab(tabId) },
     { type: 'separator' },
     { label: 'Close Tab', click: () => closeTab(tabId) },
     { label: 'Close Other Tabs', click: () => closeOtherTabs(tabId) },
@@ -550,7 +601,7 @@ ipcMain.on('tab-context-menu', (event, tabId) => {
 
 ipcMain.handle('get-tabs', () => {
   return {
-    tabs: tabs.map(t => ({ id: t.id, title: t.title, url: t.url })),
+    tabs: tabs.map(t => ({ id: t.id, title: t.title, url: t.url, pinned: t.pinned })),
     activeTabId,
   };
 });

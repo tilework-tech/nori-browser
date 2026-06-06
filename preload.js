@@ -23,6 +23,8 @@ contextBridge.exposeInMainWorld('api', {
   duplicateTab: (tabId) => ipcRenderer.send('duplicate-tab', tabId),
   closeOtherTabs: (tabId) => ipcRenderer.send('close-other-tabs', tabId),
   closeTabsToRight: (tabId) => ipcRenderer.send('close-tabs-to-right', tabId),
+  pinTab: (tabId) => ipcRenderer.send('pin-tab', tabId),
+  unpinTab: (tabId) => ipcRenderer.send('unpin-tab', tabId),
   showTabContextMenu: (tabId) => ipcRenderer.send('tab-context-menu', tabId),
   getTabs: () => ipcRenderer.invoke('get-tabs'),
   onTabsChanged: (cb) => ipcRenderer.on('tabs-changed', (_, data) => cb(data)),

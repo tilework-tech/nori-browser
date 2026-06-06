@@ -24,6 +24,16 @@
   - Right-click context menu on tabs (New Tab, Reload, Duplicate, Close Tab, Close Other Tabs, Close Tabs to the Right)
   - Scriptable IPC API for tab operations: duplicateTab, closeOtherTabs, closeTabsToRight, reopenClosedTab
   - createTab() supports optional insertIndex for position-controlled insertion
+- Tab pinning (Chrome parity):
+  - Pin/Unpin via right-click context menu ("Pin Tab" / "Unpin Tab")
+  - Pinned tabs render narrow (36px), no title text, no close button, always at the left of the tab strip
+  - Pinned tabs cannot be reordered past the pinned/unpinned boundary
+  - "Close Other Tabs" and "Close Tabs to Right" skip pinned tabs
+  - Ctrl+W and middle-click CAN close pinned tabs (matches Chrome)
+  - Duplicates of pinned tabs are unpinned
+  - Scriptable IPC API: pinTab(tabId), unpinTab(tabId)
+  - getTabs() includes pinned boolean field
+- Full e2e test suite (45 tests passing: 16 core + 17 tab + 12 pinning tests)
 
 ## In Progress
 - (nothing currently in progress)

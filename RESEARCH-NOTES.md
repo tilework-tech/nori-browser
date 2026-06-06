@@ -95,6 +95,60 @@
 - Reuse existing `closeTab` IPC channel — no new IPC needed
 - Must be wired up inside `renderTabs()` since it rebuilds DOM on every state change
 
+## Tab Pinning Research
+
+### Chrome Pinned Tab Behavior (Confirmed 2024/2025)
+
+**Appearance:**
+- Pinned tabs show only the site's favicon (no title text, no close button)
+- Fixed narrow width (~32-36px)
+- Always positioned at the far left of the tab strip, before all unpinned tabs
+
+**Close Behavior:**
+- Ctrl+W DOES close pinned tabs (Chromium WontFix since 2011, bug #84629)
+- Middle-click DOES close pinned tabs (confirmed via Brave/Chromium community)
+- Close button is NOT displayed (hidden via CSS), but other close methods work
+- "Close Other Tabs" does NOT close pinned tabs — they are preserved
+- "Close Tabs to the Right" does NOT close pinned tabs
+
+**Drag and Drop:**
+- Dragging a pinned tab rightward past the last pinned tab unpins it (expands to full size)
+- Dragging an unpinned tab leftward into the pinned area pins it (shrinks to favicon)
+- Pinned tabs can be reordered among themselves
+- Pinned and unpinned tabs never intermix in the tab strip
+
+**Keyboard Shortcut:**
+- Chrome has NO built-in keyboard shortcut for pin/unpin
+- Extensions commonly use Ctrl+Shift+P or similar
+
+**Pin/Unpin Action:**
+- Right-click context menu → "Pin tab" / "Unpin tab"
+- When pinned: tab moves to end of pinned zone (rightmost pinned position)
+- When unpinned: tab moves to start of unpinned zone (leftmost unpinned position)
+
+### Electron Implementation Approach
+- No Electron API for tab pinning — entirely application-level concern
+- Add `pinned: boolean` to tab data model
+- Enforce ordering invariant: all pinned tabs before all unpinned tabs
+- CSS: `.tab.pinned` with fixed narrow width, hidden title, hidden close button
+- No external libraries provide this — must be custom-built
+
+### Data Model Change
+```js
+// Current tab object:
+{ id, view, title, url }
+// With pinning:
+{ id, view, title, url, pinned: false }
+```
+
+### Files Requiring Changes
+- `main.js` — pinTab/unpinTab functions, modify reorderTab/closeOtherTabs/closeTabsToRight, context menu, IPC handlers, sendTabsChanged includes pinned field
+- `preload.js` — Add pinTab/unpinTab IPC bindings
+- `renderer/renderer.js` — Add .pinned class in renderTabs, hide close button for pinned tabs
+- `renderer/styles.css` — Pinned tab styles (narrow, no title, no close button)
+- `playwright-bridge.js` — Add pin-tab/unpin-tab commands for scriptability
+- `test/app.test.js` — Pinning tests
+
 ## Playwright Bridge Tab Sync Gap
 
 ### Current Issue

@@ -84,7 +84,7 @@ function renderTabs(data) {
   tabList.innerHTML = '';
   for (const tab of data.tabs) {
     const el = document.createElement('div');
-    el.className = 'tab' + (tab.id === data.activeTabId ? ' active' : '');
+    el.className = 'tab' + (tab.id === data.activeTabId ? ' active' : '') + (tab.pinned ? ' pinned' : '');
     el.dataset.tabId = tab.id;
     el.draggable = true;
 
@@ -93,14 +93,16 @@ function renderTabs(data) {
     title.textContent = tab.title || 'New Tab';
     el.appendChild(title);
 
-    const close = document.createElement('button');
-    close.className = 'tab-close';
-    close.textContent = '×';
-    close.addEventListener('click', (e) => {
-      e.stopPropagation();
-      window.api.closeTab(tab.id);
-    });
-    el.appendChild(close);
+    if (!tab.pinned) {
+      const close = document.createElement('button');
+      close.className = 'tab-close';
+      close.textContent = '×';
+      close.addEventListener('click', (e) => {
+        e.stopPropagation();
+        window.api.closeTab(tab.id);
+      });
+      el.appendChild(close);
+    }
 
     el.addEventListener('click', () => {
       window.api.switchTab(tab.id);

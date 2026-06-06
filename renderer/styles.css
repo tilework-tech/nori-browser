@@ -216,6 +216,17 @@ html, body {
   border-left: 2px solid #007acc;
 }
 
+.tab.pinned {
+  max-width: 36px;
+  min-width: 36px;
+  padding: 6px 8px;
+  justify-content: center;
+}
+
+.tab.pinned .tab-title {
+  display: none;
+}
+
 #new-tab-btn {
   background: none;
   border: none;

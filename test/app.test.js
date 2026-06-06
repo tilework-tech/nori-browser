@@ -834,3 +834,518 @@ test.describe('Nori Browser Tabs', () => {
     }, { timeout: 10000 }).toBeTruthy();
   });
 });
+
+test.describe('Nori Browser Tab Pinning', () => {
+  let electronApp;
+  let window;
+
+  let testServer;
+  let testServerPort;
+
+  test.beforeAll(async () => {
+    testServer = http.createServer((req, res) => {
+      if (req.url === '/page-a') {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end('<html><head><title>Page A</title></head><body><h1>Hello from Page A</h1></body></html>');
+      } else if (req.url === '/page-b') {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end('<html><head><title>Page B</title></head><body><h1>Hello from Page B</h1></body></html>');
+      } else if (req.url === '/page-c') {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end('<html><head><title>Page C</title></head><body><h1>Hello from Page C</h1></body></html>');
+      } else {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end('<html><head><title>Test Home</title></head><body><h1>Test Server</h1></body></html>');
+      }
+    });
+    await new Promise((resolve) => {
+      testServer.listen(0, '127.0.0.1', resolve);
+    });
+    testServerPort = testServer.address().port;
+
+    electronApp = await electron.launch({
+      args: [path.join(APP_PATH, 'main.js')],
+      env: {
+        ...process.env,
+        NORI_BROWSER_SHELL: '/bin/bash',
+        NORI_BROWSER_CDP_PORT: String(CDP_PORT + 20),
+        NORI_BROWSER_CONTROL_PORT: String(CONTROL_PORT + 20),
+      },
+    });
+
+    await electronApp.firstWindow();
+    for (let i = 0; i < 30; i++) {
+      const windows = electronApp.windows();
+      const renderer = windows.find((w) => w.url().includes('index.html'));
+      if (renderer) {
+        window = renderer;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
+    await window.waitForSelector('#tab-bar', { timeout: 10000 });
+  });
+
+  test.afterAll(async () => {
+    if (electronApp) {
+      await electronApp.close();
+      electronApp = null;
+    }
+    if (testServer) await new Promise((resolve) => testServer.close(resolve));
+  });
+
+  test('pinned tab renders without visible close button', async () => {
+    await window.evaluate(() => {
+      const tab = document.querySelector('#tab-bar .tab');
+      window.api.pinTab(tab.dataset.tabId);
+    });
+
+    await window.waitForFunction(() => {
+      return document.querySelector('#tab-bar .tab.pinned') !== null;
+    }, { timeout: 5000 });
+
+    const hasCloseButton = await window.evaluate(() => {
+      const pinnedTab = document.querySelector('#tab-bar .tab.pinned');
+      return pinnedTab.querySelector('.tab-close') !== null;
+    });
+    expect(hasCloseButton).toBe(false);
+
+    // Unpin to reset
+    await window.evaluate(() => {
+      const tab = document.querySelector('#tab-bar .tab.pinned');
+      window.api.unpinTab(tab.dataset.tabId);
+    });
+    await window.waitForFunction(() => document.querySelector('#tab-bar .tab.pinned') === null, { timeout: 5000 });
+  });
+
+  test('pinned tab renders narrower than unpinned tab', async () => {
+    // Create a second tab so we have both pinned and unpinned
+    await window.click('#new-tab-btn');
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length === 2);
+
+    // Pin the first tab
+    await window.evaluate(() => {
+      const tab = document.querySelectorAll('#tab-bar .tab')[0];
+      window.api.pinTab(tab.dataset.tabId);
+    });
+
+    await window.waitForFunction(() => document.querySelector('#tab-bar .tab.pinned') !== null, { timeout: 5000 });
+
+    const widths = await window.evaluate(() => {
+      const pinned = document.querySelector('#tab-bar .tab.pinned');
+      const unpinned = document.querySelector('#tab-bar .tab:not(.pinned)');
+      return { pinnedWidth: pinned.offsetWidth, unpinnedWidth: unpinned.offsetWidth };
+    });
+
+    expect(widths.pinnedWidth).toBeLessThan(widths.unpinnedWidth);
+
+    // Unpin and close extra tab to reset
+    await window.evaluate(() => {
+      const tab = document.querySelector('#tab-bar .tab.pinned');
+      window.api.unpinTab(tab.dataset.tabId);
+    });
+    await window.waitForFunction(() => document.querySelector('#tab-bar .tab.pinned') === null, { timeout: 5000 });
+    await window.evaluate(() => {
+      document.querySelectorAll('#tab-bar .tab')[1].querySelector('.tab-close').click();
+    });
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length === 1, { timeout: 5000 });
+  });
+
+  test('pinning a non-first tab moves it to the left', async () => {
+    // Create 3 tabs total
+    await window.click('#new-tab-btn');
+    await window.click('#new-tab-btn');
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length === 3);
+
+    // Navigate the 3rd tab to a known URL for identification
+    const urlBar = await window.$('#url-bar');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill(`http://127.0.0.1:${testServerPort}/page-c`);
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => await urlBar.inputValue(), { timeout: 10000 }).toContain('/page-c');
+
+    // Get the 3rd tab's ID
+    const thirdTabId = await window.evaluate(() => {
+      return document.querySelectorAll('#tab-bar .tab')[2].dataset.tabId;
+    });
+
+    // Pin the 3rd tab — it should move to position 0
+    await window.evaluate((tabId) => {
+      window.api.pinTab(tabId);
+    }, thirdTabId);
+
+    await window.waitForFunction(() => document.querySelector('#tab-bar .tab.pinned') !== null, { timeout: 5000 });
+
+    // The pinned tab should now be at index 0
+    const pinnedIndex = await window.evaluate(() => {
+      const tabs = document.querySelectorAll('#tab-bar .tab');
+      for (let i = 0; i < tabs.length; i++) {
+        if (tabs[i].classList.contains('pinned')) return i;
+      }
+      return -1;
+    });
+    expect(pinnedIndex).toBe(0);
+
+    // Clean up: unpin and close extra tabs
+    await window.evaluate(() => {
+      const tab = document.querySelector('#tab-bar .tab.pinned');
+      window.api.unpinTab(tab.dataset.tabId);
+    });
+    await window.waitForFunction(() => document.querySelector('#tab-bar .tab.pinned') === null, { timeout: 5000 });
+    while (await window.$$eval('#tab-bar .tab', els => els.length) > 1) {
+      const countBefore = await window.$$eval('#tab-bar .tab', els => els.length);
+      await window.evaluate(() => document.querySelectorAll('#tab-bar .tab')[1].querySelector('.tab-close').click());
+      await window.waitForFunction((c) => document.querySelectorAll('#tab-bar .tab').length < c, countBefore, { timeout: 5000 });
+    }
+  });
+
+  test('unpinning moves tab to first unpinned position', async () => {
+    // Create 3 tabs
+    await window.click('#new-tab-btn');
+    await window.click('#new-tab-btn');
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length === 3);
+
+    // Pin the first two tabs
+    await window.evaluate(() => {
+      const tabs = document.querySelectorAll('#tab-bar .tab');
+      window.api.pinTab(tabs[0].dataset.tabId);
+    });
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab.pinned').length === 1, { timeout: 5000 });
+
+    await window.evaluate(() => {
+      const tabs = document.querySelectorAll('#tab-bar .tab');
+      window.api.pinTab(tabs[1].dataset.tabId);
+    });
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab.pinned').length === 2, { timeout: 5000 });
+
+    // Get the first pinned tab's ID
+    const firstPinnedId = await window.evaluate(() => {
+      return document.querySelectorAll('#tab-bar .tab.pinned')[0].dataset.tabId;
+    });
+
+    // Unpin the first pinned tab — it should move to index 1 (after the remaining pinned tab)
+    await window.evaluate((tabId) => {
+      window.api.unpinTab(tabId);
+    }, firstPinnedId);
+
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab.pinned').length === 1, { timeout: 5000 });
+
+    // The unpinned tab should now be at the first unpinned position (index 1)
+    const unpinnedTabPosition = await window.evaluate((tabId) => {
+      const tabs = document.querySelectorAll('#tab-bar .tab');
+      for (let i = 0; i < tabs.length; i++) {
+        if (tabs[i].dataset.tabId === tabId) return i;
+      }
+      return -1;
+    }, firstPinnedId);
+    expect(unpinnedTabPosition).toBe(1);
+
+    // Clean up
+    await window.evaluate(() => {
+      const pinned = document.querySelector('#tab-bar .tab.pinned');
+      if (pinned) window.api.unpinTab(pinned.dataset.tabId);
+    });
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab.pinned').length === 0, { timeout: 5000 });
+    while (await window.$$eval('#tab-bar .tab', els => els.length) > 1) {
+      const countBefore = await window.$$eval('#tab-bar .tab', els => els.length);
+      await window.evaluate(() => document.querySelectorAll('#tab-bar .tab')[1].querySelector('.tab-close').click());
+      await window.waitForFunction((c) => document.querySelectorAll('#tab-bar .tab').length < c, countBefore, { timeout: 5000 });
+    }
+  });
+
+  test('middle-click closes a pinned tab', async () => {
+    // Create a second tab
+    await window.click('#new-tab-btn');
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length === 2);
+
+    // Pin the first tab
+    await window.evaluate(() => {
+      const tab = document.querySelectorAll('#tab-bar .tab')[0];
+      window.api.pinTab(tab.dataset.tabId);
+    });
+    await window.waitForFunction(() => document.querySelector('#tab-bar .tab.pinned') !== null, { timeout: 5000 });
+
+    // Middle-click on the pinned tab
+    await window.evaluate(() => {
+      const tab = document.querySelector('#tab-bar .tab.pinned');
+      tab.dispatchEvent(new MouseEvent('auxclick', { button: 1, bubbles: true }));
+    });
+
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length === 1, { timeout: 5000 });
+
+    const count = await window.$$eval('#tab-bar .tab', els => els.length);
+    expect(count).toBe(1);
+  });
+
+  test('Ctrl+W closes a pinned tab via menu accelerator', async () => {
+    // Create a second tab, pin the first
+    await window.click('#new-tab-btn');
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length === 2);
+
+    // Switch to first tab and pin it
+    await window.evaluate(() => document.querySelectorAll('#tab-bar .tab')[0].click());
+    await window.evaluate(() => {
+      const tab = document.querySelectorAll('#tab-bar .tab')[0];
+      window.api.pinTab(tab.dataset.tabId);
+    });
+    await window.waitForFunction(() => document.querySelector('#tab-bar .tab.pinned') !== null, { timeout: 5000 });
+
+    // Close via menu accelerator (Ctrl+W)
+    await electronApp.evaluate(({ Menu }) => {
+      const menu = Menu.getApplicationMenu();
+      const fileMenu = menu.items.find(item => item.label === 'File');
+      const closeTabItem = fileMenu.submenu.items.find(item => item.label === 'Close Tab');
+      closeTabItem.click();
+    });
+
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length === 1, { timeout: 5000 });
+
+    const count = await window.$$eval('#tab-bar .tab', els => els.length);
+    expect(count).toBe(1);
+  });
+
+  test('closeOtherTabs skips pinned tabs', async () => {
+    // Create 3 tabs total
+    await window.click('#new-tab-btn');
+    await window.click('#new-tab-btn');
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length === 3);
+
+    // Pin the first tab
+    await window.evaluate(() => {
+      const tab = document.querySelectorAll('#tab-bar .tab')[0];
+      window.api.pinTab(tab.dataset.tabId);
+    });
+    await window.waitForFunction(() => document.querySelector('#tab-bar .tab.pinned') !== null, { timeout: 5000 });
+
+    // Switch to the second tab (unpinned) and close other tabs
+    await window.evaluate(() => document.querySelectorAll('#tab-bar .tab')[1].click());
+    await window.evaluate(() => {
+      const activeTab = document.querySelector('#tab-bar .tab.active');
+      window.api.closeOtherTabs(activeTab.dataset.tabId);
+    });
+
+    // Should have 2 tabs remaining: the pinned one and the target
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length === 2, { timeout: 5000 });
+
+    const pinnedCount = await window.$$eval('#tab-bar .tab.pinned', els => els.length);
+    expect(pinnedCount).toBe(1);
+
+    const totalCount = await window.$$eval('#tab-bar .tab', els => els.length);
+    expect(totalCount).toBe(2);
+
+    // Clean up
+    await window.evaluate(() => {
+      const pinned = document.querySelector('#tab-bar .tab.pinned');
+      if (pinned) window.api.unpinTab(pinned.dataset.tabId);
+    });
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab.pinned').length === 0, { timeout: 5000 });
+    while (await window.$$eval('#tab-bar .tab', els => els.length) > 1) {
+      const countBefore = await window.$$eval('#tab-bar .tab', els => els.length);
+      await window.evaluate(() => document.querySelectorAll('#tab-bar .tab')[1].querySelector('.tab-close').click());
+      await window.waitForFunction((c) => document.querySelectorAll('#tab-bar .tab').length < c, countBefore, { timeout: 5000 });
+    }
+  });
+
+  test('closeTabsToRight skips pinned tabs', async () => {
+    // Create 3 tabs
+    await window.click('#new-tab-btn');
+    await window.click('#new-tab-btn');
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length === 3);
+
+    // Navigate the 3rd tab to page-c for identification
+    const urlBar = await window.$('#url-bar');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill(`http://127.0.0.1:${testServerPort}/page-c`);
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => await urlBar.inputValue(), { timeout: 10000 }).toContain('/page-c');
+
+    // Pin the 3rd tab (it moves to position 0 in the pinned zone)
+    await window.evaluate(() => {
+      const tabs = document.querySelectorAll('#tab-bar .tab');
+      window.api.pinTab(tabs[2].dataset.tabId);
+    });
+    await window.waitForFunction(() => document.querySelector('#tab-bar .tab.pinned') !== null, { timeout: 5000 });
+
+    // Now: [pinned-pageC, unpinned-1, unpinned-2]
+    // Switch to the first unpinned tab (index 1) and close tabs to the right
+    await window.evaluate(() => document.querySelectorAll('#tab-bar .tab')[1].click());
+    await window.evaluate(() => {
+      const tab = document.querySelectorAll('#tab-bar .tab')[1];
+      window.api.closeTabsToRight(tab.dataset.tabId);
+    });
+
+    // The last unpinned tab should be closed, pinned tab survives
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length === 2, { timeout: 5000 });
+
+    const pinnedCount = await window.$$eval('#tab-bar .tab.pinned', els => els.length);
+    expect(pinnedCount).toBe(1);
+
+    // Clean up
+    await window.evaluate(() => {
+      const pinned = document.querySelector('#tab-bar .tab.pinned');
+      if (pinned) window.api.unpinTab(pinned.dataset.tabId);
+    });
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab.pinned').length === 0, { timeout: 5000 });
+    while (await window.$$eval('#tab-bar .tab', els => els.length) > 1) {
+      const countBefore = await window.$$eval('#tab-bar .tab', els => els.length);
+      await window.evaluate(() => document.querySelectorAll('#tab-bar .tab')[1].querySelector('.tab-close').click());
+      await window.waitForFunction((c) => document.querySelectorAll('#tab-bar .tab').length < c, countBefore, { timeout: 5000 });
+    }
+  });
+
+  test('reorder cannot move pinned tab past the unpinned boundary', async () => {
+    // Create 2 tabs, pin the first
+    await window.click('#new-tab-btn');
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length === 2);
+
+    await window.evaluate(() => {
+      const tab = document.querySelectorAll('#tab-bar .tab')[0];
+      window.api.pinTab(tab.dataset.tabId);
+    });
+    await window.waitForFunction(() => document.querySelector('#tab-bar .tab.pinned') !== null, { timeout: 5000 });
+
+    const pinnedId = await window.evaluate(() => document.querySelector('#tab-bar .tab.pinned').dataset.tabId);
+
+    // Try to reorder the pinned tab to position 1 (unpinned zone)
+    await window.evaluate((tabId) => {
+      window.api.reorderTab(tabId, 1);
+    }, pinnedId);
+
+    // Wait for any tabs-changed event to be processed
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length === 2, { timeout: 5000 });
+
+    // The pinned tab should still be at position 0
+    const pinnedPosition = await window.evaluate((tabId) => {
+      const tabs = document.querySelectorAll('#tab-bar .tab');
+      for (let i = 0; i < tabs.length; i++) {
+        if (tabs[i].dataset.tabId === tabId) return i;
+      }
+      return -1;
+    }, pinnedId);
+    expect(pinnedPosition).toBe(0);
+
+    // Clean up
+    await window.evaluate(() => {
+      const pinned = document.querySelector('#tab-bar .tab.pinned');
+      if (pinned) window.api.unpinTab(pinned.dataset.tabId);
+    });
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab.pinned').length === 0, { timeout: 5000 });
+    await window.evaluate(() => {
+      document.querySelectorAll('#tab-bar .tab')[1].querySelector('.tab-close').click();
+    });
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length === 1, { timeout: 5000 });
+  });
+
+  test('reorder cannot move unpinned tab into pinned zone', async () => {
+    // Create 2 tabs, pin the first
+    await window.click('#new-tab-btn');
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length === 2);
+
+    await window.evaluate(() => {
+      const tab = document.querySelectorAll('#tab-bar .tab')[0];
+      window.api.pinTab(tab.dataset.tabId);
+    });
+    await window.waitForFunction(() => document.querySelector('#tab-bar .tab.pinned') !== null, { timeout: 5000 });
+
+    const unpinnedId = await window.evaluate(() => {
+      const tabs = document.querySelectorAll('#tab-bar .tab');
+      for (let i = 0; i < tabs.length; i++) {
+        if (!tabs[i].classList.contains('pinned')) return tabs[i].dataset.tabId;
+      }
+      return null;
+    });
+
+    // Try to move the unpinned tab to position 0 (pinned zone)
+    await window.evaluate((tabId) => {
+      window.api.reorderTab(tabId, 0);
+    }, unpinnedId);
+
+    // Wait for any tabs-changed event to be processed
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length === 2, { timeout: 5000 });
+
+    // The unpinned tab should still be at position 1
+    const unpinnedPosition = await window.evaluate((tabId) => {
+      const tabs = document.querySelectorAll('#tab-bar .tab');
+      for (let i = 0; i < tabs.length; i++) {
+        if (tabs[i].dataset.tabId === tabId) return i;
+      }
+      return -1;
+    }, unpinnedId);
+    expect(unpinnedPosition).toBe(1);
+
+    // Clean up
+    await window.evaluate(() => {
+      const pinned = document.querySelector('#tab-bar .tab.pinned');
+      if (pinned) window.api.unpinTab(pinned.dataset.tabId);
+    });
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab.pinned').length === 0, { timeout: 5000 });
+    await window.evaluate(() => {
+      document.querySelectorAll('#tab-bar .tab')[1].querySelector('.tab-close').click();
+    });
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length === 1, { timeout: 5000 });
+  });
+
+  test('getTabs reports pinned state correctly after pin and unpin', async () => {
+    // Pin the tab and verify the API reports it as pinned
+    await window.evaluate(() => {
+      const tab = document.querySelector('#tab-bar .tab');
+      window.api.pinTab(tab.dataset.tabId);
+    });
+    await window.waitForFunction(() => document.querySelector('#tab-bar .tab.pinned') !== null, { timeout: 5000 });
+
+    const pinnedTabs = await window.evaluate(async () => {
+      const data = await window.api.getTabs();
+      return data.tabs.filter(t => t.pinned);
+    });
+    expect(pinnedTabs.length).toBe(1);
+
+    // Unpin and verify the API no longer reports any pinned tabs
+    await window.evaluate(() => {
+      const tab = document.querySelector('#tab-bar .tab.pinned');
+      window.api.unpinTab(tab.dataset.tabId);
+    });
+    await window.waitForFunction(() => document.querySelector('#tab-bar .tab.pinned') === null, { timeout: 5000 });
+
+    const pinnedTabsAfter = await window.evaluate(async () => {
+      const data = await window.api.getTabs();
+      return data.tabs.filter(t => t.pinned);
+    });
+    expect(pinnedTabsAfter.length).toBe(0);
+  });
+
+  test('duplicate of a pinned tab is unpinned', async () => {
+    // Pin the tab
+    await window.evaluate(() => {
+      const tab = document.querySelector('#tab-bar .tab');
+      window.api.pinTab(tab.dataset.tabId);
+    });
+    await window.waitForFunction(() => document.querySelector('#tab-bar .tab.pinned') !== null, { timeout: 5000 });
+
+    // Duplicate the pinned tab
+    await window.evaluate(() => {
+      const tab = document.querySelector('#tab-bar .tab.pinned');
+      window.api.duplicateTab(tab.dataset.tabId);
+    });
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length === 2, { timeout: 5000 });
+
+    // The new tab should NOT be pinned
+    const pinnedCount = await window.$$eval('#tab-bar .tab.pinned', els => els.length);
+    expect(pinnedCount).toBe(1);
+
+    const totalCount = await window.$$eval('#tab-bar .tab', els => els.length);
+    expect(totalCount).toBe(2);
+
+    // Clean up
+    await window.evaluate(() => {
+      const pinned = document.querySelector('#tab-bar .tab.pinned');
+      if (pinned) window.api.unpinTab(pinned.dataset.tabId);
+    });
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab.pinned').length === 0, { timeout: 5000 });
+    while (await window.$$eval('#tab-bar .tab', els => els.length) > 1) {
+      const countBefore = await window.$$eval('#tab-bar .tab', els => els.length);
+      await window.evaluate(() => document.querySelectorAll('#tab-bar .tab')[1].querySelector('.tab-close').click());
+      await window.waitForFunction((c) => document.querySelectorAll('#tab-bar .tab').length < c, countBefore, { timeout: 5000 });
+    }
+  });
+});
