@@ -7,26 +7,26 @@
 
 - If this is a new session post-compaction summary, add the following to your Todo list:
 <required-after-compaction> After a compaction you will lose critical context that is embedded in skills. Reread all skills in the <required> block. </required-after-compaction>
-- Read `/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/using-skills/SKILL.md`
+- Read `/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/using-skills/SKILL.md`
 - Check git status.
-  - If on main, master, dev, or any similarly named protected branch: Read and follow `/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/using-git-worktrees/SKILL.md` to create a worktree. Derive the branch name from my request.
-  - If in a automatically-created worktree: Read and follow `/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/using-git-worktrees/SKILL.md` to set up your worktree (start from step 4).
+  - If on main, master, dev, or any similarly named protected branch: Read and follow `/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/using-git-worktrees/SKILL.md` to create a worktree. Derive the branch name from my request.
+  - If in a automatically-created worktree: Read and follow `/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/using-git-worktrees/SKILL.md` to set up your worktree (start from step 4).
 <system-reminder> You are now in a new working directory. Do NOT leave this directory. </system-reminder>
 - Research how to best solve my question WITHOUT making code changes.
-  - Search for relevant skills using Glob/Grep in `/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/`
+  - Search for relevant skills using Glob/Grep in `/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/`
   - Use the nori-web-researcher.
   - Use the nori-code-researcher.
   <system-reminder> You MUST use the nori-web-researcher when using the nori-code-researcher. The opposite is not true. </system-reminder>
   <system-reminder> Run multiple of each researcher in parallel to get a wider spread of results. </system-reminder>
-- Read and follow `/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/writing-plans/SKILL.md`
+- Read and follow `/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/writing-plans/SKILL.md`
 - Present plan to me and ask for feedback.
   - If I have feedback, modify the plan. Repeat until I approve.
 <system-reminder> Do not stop here. Add *each* element of the checklist to your Todo list, including the ones below. </system-reminder>
-- Use test driven development. Read and follow `/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/test-driven-development/SKILL.md`.
+- Use test driven development. Read and follow `/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/test-driven-development/SKILL.md`.
 <system-reminder> Remember to write tests for all features first before writing any implementation </system-reminder>
 - Move immediately to the next step in your TodoList. Do *NOT* just present your work and wait around.
-- Update documentation, INCLUDING out of date documentation. Read and follow `/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/updating-noridocs/SKILL.md`
-- Finish development with final checks. Read and follow `/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/finishing-a-development-branch/SKILL.md`
+- Update documentation, INCLUDING out of date documentation. Read and follow `/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/updating-noridocs/SKILL.md`
+- Finish development with final checks. Read and follow `/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/finishing-a-development-branch/SKILL.md`
 <system-reminder> NEVER say 'You are absolutely right!' </system-reminder>
 </required>
 
@@ -62,75 +62,75 @@ Only use try/catch on system boundaries. Allow failures to bubble up in intermed
 
 **See also:**
 
-- `/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/systematic-debugging/SKILL.md` - Four-phase debugging framework
-- `/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/root-cause-tracing/SKILL.md` - Backward tracing technique
-- `/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/creating-debug-tests-and-iterating - Use when debugging some unexpected externally-facing behavior and you do not have stack traces or error logs
+- `/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/systematic-debugging/SKILL.md` - Four-phase debugging framework
+- `/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/root-cause-tracing/SKILL.md` - Backward tracing technique
+- `/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/creating-debug-tests-and-iterating - Use when debugging some unexpected externally-facing behavior and you do not have stack traces or error logs
 
 # Nori Skills System
 
-You have access to the Nori skills system. Read the full instructions at: /home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/using-skills/SKILL.md
+You have access to the Nori skills system. Read the full instructions at: /home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/using-skills/SKILL.md
 
 ## Available Skills
 
 Found 20 skills:
-/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/writing-plans/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/writing-plans/SKILL.md
   Name: writing-plans
   Description: Use when design is complete and you need detailed implementation tasks for engineers with zero codebase context - creates comprehensive implementation plans with exact file paths, complete code examples, and verification steps assuming engineer has minimal domain knowledge
-/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/webapp-testing/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/webapp-testing/SKILL.md
   Name: webapp-testing
   Description: Use this skill to build features or debug anything that uses a webapp frontend.
-/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/using-skills/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/using-skills/SKILL.md
   Name: using-skills
   Description: Describes how to use abilities. Read before any conversation.
-/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/using-git-worktrees/SKILL.md
-  Name: using-git-worktrees
-  Description: Use this whenever you need to create an isolated workspace. Optionally symlinks gitignored-but-active content (e.g., `data/`, `.env.local`) from the main worktree to prevent loss on cleanup.
-/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/updating-noridocs/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/updating-noridocs/SKILL.md
   Name: updating-noridocs
   Description: Use this when you have finished making code changes and you are ready to update the documentation based on those changes.
-/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/ui-ux-experimentation/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/using-git-worktrees/SKILL.md
+  Name: using-git-worktrees
+  Description: Use this whenever you need to create an isolated workspace. Optionally symlinks gitignored-but-active content (e.g., `data/`, `.env.local`) from the main worktree to prevent loss on cleanup.
+/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/ui-ux-experimentation/SKILL.md
   Name: UI/UX Experimentation
   Description: Use when experimenting with different user interfaces or user experiences.
-/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/test-scenario-hygiene/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/test-scenario-hygiene/SKILL.md
   Name: test-scenario-hygiene
   Description: Use after TDD is finished, to review and clean the testing additions
-/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/test-driven-development/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/test-driven-development/SKILL.md
   Name: test-driven-development
   Description: Use when implementing any feature or bugfix, before writing implementation code - write the test first, watch it fail, write minimal code to pass; ensures tests actually verify behavior by requiring failure first
-/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/systematic-debugging/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/systematic-debugging/SKILL.md
   Name: systematic-debugging
   Description: Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes - four-phase framework (root cause investigation, pattern analysis, hypothesis testing, implementation) that ensures understanding before attempting solutions
-/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/root-cause-tracing/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/root-cause-tracing/SKILL.md
   Name: root-cause-tracing
   Description: Use when errors occur deep in execution and you need to trace back to find the original trigger - systematically traces bugs backward through call stack, adding instrumentation when needed, to identify source of invalid data or incorrect behavior
-/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/receiving-code-review/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/receiving-code-review/SKILL.md
   Name: receiving-code-review
   Description: Use when receiving code review feedback, before implementing suggestions, especially if feedback seems unclear or technically questionable - requires technical rigor and verification, not performative agreement or blind implementation
-/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/handle-large-tasks/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/handle-large-tasks/SKILL.md
   Name: handle-large-tasks
   Description: Use this skill to split large plans into smaller chunks. This skill manages your context window for large tasks. Use it when a task will take a long time and cause context issues.
-/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/finishing-a-development-branch/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/finishing-a-development-branch/SKILL.md
   Name: finishing-a-development-branch
   Description: Use this when you have completed some feature implementation and have written passing tests, and you are ready to create a PR.
-/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/creating-skills/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/creating-skills/SKILL.md
   Name: creating-skills
   Description: Use when you need to create a new custom skill for a profile - guides through gathering requirements, creating directory structure, writing SKILL.md, and optionally adding bundled scripts
-/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/creating-debug-tests-and-iterating/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/creating-debug-tests-and-iterating/SKILL.md
   Name: creating-debug-tests-and-iterating
   Description: Use this skill when faced with a difficult debugging task where you need to replicate some bug or behavior in order to see what is going wrong.
-/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/creating-a-skillset/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/creating-a-skillset/SKILL.md
   Name: Creating a Skillset
   Description: Use when asked to create a new skillset.
-/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/building-ui-ux/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/building-ui-ux/SKILL.md
   Name: building-ui-ux
   Description: Use when implementing user interfaces or user experiences - guides through exploration of design variations, frontend setup, iteration, and proper integration
-/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/building-agentic-cli-tools/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/building-agentic-cli-tools/SKILL.md
   Name: building-agentic-cli-tools
   Description: Read this skill whenever you need to build a cli where the primary consumer is the agent.
-/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/brainstorming/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/brainstorming/SKILL.md
   Name: brainstorming
   Description: IMMEDIATELY USE THIS SKILL when creating or develop anything and before writing code or implementation plans - refines rough ideas into fully-formed designs through structured Socratic questioning, alternative exploration, and incremental validation
-/home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/nori-info/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/nori-info/SKILL.md
   Name: Nori Skillsets
   Description: Use when the user asks about anything related to nori.
 

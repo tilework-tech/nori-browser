@@ -193,7 +193,7 @@ You MUST complete each phase before proceeding to the next.
    - Automated test if possible
    - One-off test script if no framework
    - MUST have before fixing
-   - See /home/amol/code/nori/nori-browser/.worktrees/vast-fig-20260606-210853/.claude/skills/test-driven-development for writing proper failing tests
+   - See /home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/test-driven-development for writing proper failing tests
 
 2. **Implement Single Fix**
 
