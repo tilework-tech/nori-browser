@@ -22,7 +22,7 @@ Path: @/test
 - **Terminal interaction**: Tests use a TCP control socket (`connectControl()` / `sendAndWait()`) to send commands and wait for marker strings in terminal output. This is more reliable than UI-based xterm interaction
 - **Two test suites**: The tests are split into two `test.describe` blocks, each with its own Electron app instance:
   - `Nori Browser` -- core functionality: window elements, terminal I/O, URL navigation, CDP connectivity, env vars, bridge CLI commands, session directory lifecycle
-  - `Nori Browser Tabs` -- tab management: tab bar rendering, creating/closing/switching tabs, navigation isolation between tabs, keyboard accelerators (Ctrl+T, Ctrl+W, next-tab), tab reordering via IPC, bridge CLI `list-tabs`, and closing the last tab to close the window
+  - `Nori Browser Tabs` -- tab management: tab bar rendering, creating/closing/switching tabs, navigation isolation between tabs, keyboard accelerators (Ctrl+T, Ctrl+W, next-tab), tab reordering via IPC, bridge CLI `list-tabs`, reopen closed tab (Ctrl+Shift+T) with URL and position restoration, middle-click to close tab, duplicate tab, close other tabs, close tabs to the right, and closing the last tab to close the window
 - **Bridge CLI tests**: Verify the real agent workflow -- send bridge commands via the control socket or `execSync`, wait for status markers (e.g., `NAVIGATE_OK`, `LIST_TABS_OK`), and cross-check browser state
 - **Session directory tests**: Verify `NORI_SESSION_DIR` env var is set, `system-prompt.txt` exists with correct CDP port and bridge path, and that the session directory is removed when the app closes
 
@@ -32,5 +32,6 @@ Path: @/test
 - The `Nori Browser Tabs` suite uses its own port offsets (`CDP_PORT + 10`, `CONTROL_PORT + 10`) separate from the core suite to allow independent operation
 - The session cleanup test and the "closing the last tab closes the window" test both close the Electron app and must run last within their respective suites. The `afterAll` handlers guard against a null `electronApp`
 - Tab tests use `window.evaluate()` to click tab elements rather than direct Playwright selectors to avoid stale element handles after tab list re-renders
+- Menu accelerator tests (Ctrl+T, Ctrl+W, Ctrl+Shift+T) use `electronApp.evaluate(({ Menu }) => ...)` to invoke menu items from the main process rather than simulating keyboard shortcuts, because Electron menu accelerators are not reliably triggered by Playwright keypresses in CI
 
 Created and maintained by Nori.
