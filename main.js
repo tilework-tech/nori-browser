@@ -199,7 +199,8 @@ function resolveShell(sessionDir) {
       return {
         command: claudePath,
         args: [
-          '--bare',
+          '--setting-sources', '',
+          '--settings', JSON.stringify({ claudeMdExcludes: ['**'] }),
           '--append-system-prompt-file', path.join(sessionDir, 'system-prompt.txt'),
           '--dangerously-skip-permissions',
         ],

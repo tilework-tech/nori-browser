@@ -11,7 +11,7 @@ Path: @/
 ### How it fits into the larger codebase
 
 - This is the top-level application directory; `renderer/` contains the frontend UI and `test/` contains end-to-end Playwright tests
-- The terminal spawns whatever shell `NORI_BROWSER_SHELL` specifies, falling back to Claude Code CLI (launched in `--bare` mode with a session-specific system prompt), then the user's default shell (see `resolveShell()` in `main.js`)
+- The terminal spawns whatever shell `NORI_BROWSER_SHELL` specifies, falling back to Claude Code CLI (launched with isolated settings and a session-specific system prompt), then the user's default shell (see `resolveShell()` in `main.js`)
 - The terminal environment is seeded with env vars that form the agent-to-browser contract:
 
 | Env Var | Purpose |
@@ -28,7 +28,7 @@ Path: @/
 ### Core Implementation
 
 - **Application lifecycle**: `app.whenReady()` calls `createWindow()`, which triggers `startTerminal()` via IPC. `startTerminal()` creates a session directory, resolves the shell, and spawns the pty. The `BrowserView` loads `about:blank` initially. URL navigation is driven either by the user typing into the toolbar URL bar or by an agent calling the bridge CLI
-- **Session isolation**: `createSessionDir()` writes a `system-prompt.txt` into a temp directory (`os.tmpdir()/nori-browser-*`). This prompt tells Claude Code how to connect to the browser (CDP port, bridge path, available commands) and instructs it not to use MCP tools, create worktrees, or run `git init`. When Claude Code is detected, it is launched with `--bare` (skips user config, CLAUDE.md, hooks, skills, plugins), `--append-system-prompt-file` (injects the session prompt), and `--dangerously-skip-permissions` (no interactive permission prompts). The session directory is cleaned up in both `before-quit` and `window-all-closed` handlers
+- **Session isolation**: `createSessionDir()` writes a `system-prompt.txt` into a temp directory (`os.tmpdir()/nori-browser-*`). This prompt tells Claude Code how to connect to the browser (CDP port, bridge path, available commands) and instructs it not to use MCP tools, create worktrees, or run `git init`. When Claude Code is detected, it is launched with `--setting-sources ''` (skips all file-based settings), `--settings '{"claudeMdExcludes":["**"]}'` (excludes all CLAUDE.md files), `--append-system-prompt-file` (injects the session prompt), and `--dangerously-skip-permissions` (no interactive permission prompts). This approach preserves OAuth/keychain authentication while isolating the session from user config — `--bare` is not used because it blocks all auth. The session directory is cleaned up in both `before-quit` and `window-all-closed` handlers
 - **Browser-terminal integration flow**:
 ```
 Agent types in terminal
