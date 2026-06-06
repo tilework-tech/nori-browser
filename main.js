@@ -1,4 +1,4 @@
-const { app, BrowserWindow, BrowserView, ipcMain } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain } = require('electron');
 const net = require('net');
 const path = require('path');
 const fs = require('fs');
@@ -36,19 +36,21 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
-  browserView = new BrowserView({
+  browserView = new WebContentsView({
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
     },
   });
-  mainWindow.setBrowserView(browserView);
+  mainWindow.contentView.addChildView(browserView);
   browserView.webContents.loadURL('about:blank');
 
   mainWindow.once('ready-to-show', updateBrowserViewBounds);
   mainWindow.on('resize', updateBrowserViewBounds);
   mainWindow.on('maximize', updateBrowserViewBounds);
   mainWindow.on('unmaximize', updateBrowserViewBounds);
+  mainWindow.on('enter-full-screen', updateBrowserViewBounds);
+  mainWindow.on('leave-full-screen', updateBrowserViewBounds);
 
   mainWindow.webContents.once('did-finish-load', () => {
     updateBrowserViewBounds();
@@ -72,6 +74,7 @@ function createWindow() {
   });
 
   mainWindow.on('closed', () => {
+    browserView = null;
     mainWindow = null;
     if (ptyProcess) ptyProcess.kill();
   });
