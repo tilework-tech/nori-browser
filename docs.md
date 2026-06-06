@@ -5,7 +5,7 @@ Path: @/
 ### Overview
 
 - Electron desktop app that pairs a Chromium browser pane with a terminal sidebar, letting an AI agent (or human) control the browser via Playwright's CDP protocol
-- The main process (`main.js`) orchestrates three subsystems: an Electron `BrowserView` for web content, a `node-pty` terminal, and IPC handlers for the renderer toolbar
+- The main process (`main.js`) orchestrates three subsystems: an Electron `WebContentsView` for web content, a `node-pty` terminal, and IPC handlers for the renderer toolbar
 - `playwright-bridge.js` is a stateless CLI tool that agents invoke from the terminal to read and manipulate the browser page
 
 ### How it fits into the larger codebase
@@ -27,19 +27,19 @@ Path: @/
 
 ### Core Implementation
 
-- **Application lifecycle**: `app.whenReady()` calls `createWindow()`, which triggers `startTerminal()` via IPC. `startTerminal()` creates a session directory, resolves the shell, and spawns the pty. The `BrowserView` loads `about:blank` initially. URL navigation is driven either by the user typing into the toolbar URL bar or by an agent calling the bridge CLI
+- **Application lifecycle**: `app.whenReady()` calls `createWindow()`, which triggers `startTerminal()` via IPC. `startTerminal()` creates a session directory, resolves the shell, and spawns the pty. The `WebContentsView` loads `about:blank` initially. URL navigation is driven either by the user typing into the toolbar URL bar or by an agent calling the bridge CLI
 - **Session isolation**: `createSessionDir()` writes a `system-prompt.txt` into a temp directory (`os.tmpdir()/nori-browser-*`). This prompt tells Claude Code how to connect to the browser (CDP port, bridge path, available commands) and instructs it not to use MCP tools, create worktrees, or run `git init`. When Claude Code is detected, it is launched with `--setting-sources ''` (skips all file-based settings), `--settings '{"claudeMdExcludes":["**"]}'` (excludes all CLAUDE.md files), `--append-system-prompt-file` (injects the session prompt), and `--dangerously-skip-permissions` (no interactive permission prompts). This approach preserves OAuth/keychain authentication while isolating the session from user config — `--bare` is not used because it blocks all auth. The session directory is cleaned up in both `before-quit` and `window-all-closed` handlers
 - **Browser-terminal integration flow**:
 ```
 Agent types in terminal
   -> pty forwards to shell
   -> shell runs `node $NORI_BROWSER_DIR/playwright-bridge.js <cmd>`
-  -> bridge connects via CDP to Electron's BrowserView
+  -> bridge connects via CDP to Electron's WebContentsView
   -> bridge performs action, prints status marker (e.g. NAVIGATE_OK), disconnects
   -> terminal shows output to agent
 ```
 - **IPC channels** in `preload.js` expose a `window.api` surface: terminal I/O (`terminal-input`, `terminal-data`, `terminal-exit`), navigation (`navigate`, `go-back`, `go-forward`, `reload`), layout (`sidebar-resize`), and state sync (`url-changed`, `cdp-port`)
-- **BrowserView bounds** are computed from `sidebarWidth` and `TOOLBAR_HEIGHT` constants. The sidebar is resizable via a drag divider in the renderer; resize events propagate through `sidebar-resize` IPC to recalculate bounds
+- **WebContentsView bounds** are computed from `sidebarWidth` and `TOOLBAR_HEIGHT` constants. The `WebContentsView` is added as a child of `mainWindow.contentView` via `addChildView()`. Bounds are recalculated on all window state transitions: `resize`, `maximize`, `unmaximize`, `enter-full-screen`, and `leave-full-screen`. The sidebar is also resizable via a drag divider in the renderer; resize events propagate through `sidebar-resize` IPC to recalculate bounds
 - **Bridge CLI** (`playwright-bridge.js`) supports commands: `status`, `navigate`, `snapshot`, `click`, `fill`, `eval`, `content`, `screenshot`. It also exports `connectToBrowser()` for programmatic use
 - **Build step**: `renderer/renderer.js` is bundled via esbuild into `renderer/bundle.js` before the app starts or tests run
 
