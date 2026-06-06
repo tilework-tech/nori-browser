@@ -610,6 +610,198 @@ test.describe('Nori Browser Tabs', () => {
     expect(tabLines.length).toBeGreaterThanOrEqual(2);
   });
 
+  test('Ctrl+Shift+T reopens a closed tab with the correct URL', async () => {
+    const urlBar = await window.$('#url-bar');
+
+    // Navigate the active tab to a known URL
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill(`http://127.0.0.1:${testServerPort}/page-a`);
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => await urlBar.inputValue(), { timeout: 10000 }).toContain('/page-a');
+
+    const countBefore = await window.$$eval('#tab-bar .tab', els => els.length);
+
+    // Close the active tab
+    await electronApp.evaluate(({ Menu }) => {
+      const menu = Menu.getApplicationMenu();
+      const fileMenu = menu.items.find(item => item.label === 'File');
+      const closeItem = fileMenu.submenu.items.find(item => item.label === 'Close Tab');
+      closeItem.click();
+    });
+    await window.waitForFunction(
+      (c) => document.querySelectorAll('#tab-bar .tab').length === c - 1,
+      countBefore
+    );
+
+    // Reopen via Reopen Closed Tab menu item
+    await electronApp.evaluate(({ Menu }) => {
+      const menu = Menu.getApplicationMenu();
+      const fileMenu = menu.items.find(item => item.label === 'File');
+      const reopenItem = fileMenu.submenu.items.find(item => item.label === 'Reopen Closed Tab');
+      reopenItem.click();
+    });
+
+    await window.waitForFunction(
+      (c) => document.querySelectorAll('#tab-bar .tab').length === c,
+      countBefore
+    );
+
+    // The reopened tab should be active and navigate to page-a
+    await expect.poll(async () => await urlBar.inputValue(), { timeout: 10000 }).toContain('/page-a');
+  });
+
+  test('Ctrl+Shift+T reopens tab at its original position', async () => {
+    // Ensure we have at least 3 tabs
+    while (await window.$$eval('#tab-bar .tab', els => els.length) < 3) {
+      await window.click('#new-tab-btn');
+    }
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length >= 3);
+
+    const urlBar = await window.$('#url-bar');
+
+    // Navigate each tab to a known URL for identification
+    await window.evaluate(() => document.querySelectorAll('#tab-bar .tab')[0].click());
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill(`http://127.0.0.1:${testServerPort}/page-a`);
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => await urlBar.inputValue(), { timeout: 10000 }).toContain('/page-a');
+
+    await window.evaluate(() => document.querySelectorAll('#tab-bar .tab')[1].click());
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill(`http://127.0.0.1:${testServerPort}/page-b`);
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => await urlBar.inputValue(), { timeout: 10000 }).toContain('/page-b');
+
+    await window.evaluate(() => document.querySelectorAll('#tab-bar .tab')[2].click());
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill(`http://127.0.0.1:${testServerPort}/page-c`);
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => await urlBar.inputValue(), { timeout: 10000 }).toContain('/page-c');
+
+    // Close the middle tab (index 1)
+    await window.evaluate(() => {
+      document.querySelectorAll('#tab-bar .tab')[1].querySelector('.tab-close').click();
+    });
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length === 2);
+
+    // Reopen the closed tab
+    await electronApp.evaluate(({ Menu }) => {
+      const menu = Menu.getApplicationMenu();
+      const fileMenu = menu.items.find(item => item.label === 'File');
+      const reopenItem = fileMenu.submenu.items.find(item => item.label === 'Reopen Closed Tab');
+      reopenItem.click();
+    });
+
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length === 3);
+
+    // The reopened tab should be at index 1 and show page-b
+    const activeIndex = await window.evaluate(() => {
+      const tabs = document.querySelectorAll('#tab-bar .tab');
+      for (let i = 0; i < tabs.length; i++) {
+        if (tabs[i].classList.contains('active')) return i;
+      }
+      return -1;
+    });
+    expect(activeIndex).toBe(1);
+
+    await expect.poll(async () => await urlBar.inputValue(), { timeout: 10000 }).toContain('/page-b');
+  });
+
+  test('middle-click on a tab closes it', async () => {
+    // Ensure at least 2 tabs
+    while (await window.$$eval('#tab-bar .tab', els => els.length) < 2) {
+      await window.click('#new-tab-btn');
+    }
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length >= 2);
+
+    const countBefore = await window.$$eval('#tab-bar .tab', els => els.length);
+
+    // Middle-click on the first tab using evaluate to avoid stale element handles
+    await window.evaluate(() => {
+      const tab = document.querySelector('#tab-bar .tab');
+      tab.dispatchEvent(new MouseEvent('auxclick', { button: 1, bubbles: true }));
+    });
+
+    await window.waitForFunction(
+      (c) => document.querySelectorAll('#tab-bar .tab').length === c - 1,
+      countBefore
+    );
+
+    const countAfter = await window.$$eval('#tab-bar .tab', els => els.length);
+    expect(countAfter).toBe(countBefore - 1);
+  });
+
+  test('duplicate tab creates a new tab with the same URL', async () => {
+    const urlBar = await window.$('#url-bar');
+
+    // Navigate active tab to page-a
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill(`http://127.0.0.1:${testServerPort}/page-a`);
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => await urlBar.inputValue(), { timeout: 10000 }).toContain('/page-a');
+
+    const countBefore = await window.$$eval('#tab-bar .tab', els => els.length);
+
+    // Duplicate the active tab via IPC
+    await window.evaluate(() => {
+      const activeTab = document.querySelector('#tab-bar .tab.active');
+      window.api.duplicateTab(activeTab.dataset.tabId);
+    });
+
+    await window.waitForFunction(
+      (c) => document.querySelectorAll('#tab-bar .tab').length === c + 1,
+      countBefore
+    );
+
+    // The new (duplicated) tab should be active and show page-a
+    await expect.poll(async () => await urlBar.inputValue(), { timeout: 10000 }).toContain('/page-a');
+  });
+
+  test('close other tabs removes all except the target', async () => {
+    const count = await window.$$eval('#tab-bar .tab', els => els.length);
+    if (count < 2) {
+      await window.click('#new-tab-btn');
+      await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length >= 2);
+    }
+
+    expect(await window.$$eval('#tab-bar .tab', els => els.length)).toBeGreaterThan(1);
+
+    // Close all tabs except the active one
+    await window.evaluate(() => {
+      const activeTab = document.querySelector('#tab-bar .tab.active');
+      window.api.closeOtherTabs(activeTab.dataset.tabId);
+    });
+
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length === 1);
+
+    const remaining = await window.$$eval('#tab-bar .tab', els => els.length);
+    expect(remaining).toBe(1);
+
+    const activeTab = await window.$('#tab-bar .tab.active');
+    expect(activeTab).toBeTruthy();
+  });
+
+  test('close tabs to the right removes tabs after the target', async () => {
+    // Create 2 more tabs so we have 3
+    await window.click('#new-tab-btn');
+    await window.click('#new-tab-btn');
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length === 3);
+
+    // Switch to the first tab (index 0)
+    await window.evaluate(() => document.querySelectorAll('#tab-bar .tab')[0].click());
+
+    // Close tabs to the right of the first tab
+    await window.evaluate(() => {
+      const firstTab = document.querySelectorAll('#tab-bar .tab')[0];
+      window.api.closeTabsToRight(firstTab.dataset.tabId);
+    });
+
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab').length === 1);
+
+    const remaining = await window.$$eval('#tab-bar .tab', els => els.length);
+    expect(remaining).toBe(1);
+  });
+
   test('closing the last tab closes the window', async () => {
     // Close tabs until one left, then close that one
     while (true) {

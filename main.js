@@ -23,6 +23,8 @@ const TAB_BAR_HEIGHT = 36;
 let tabs = [];
 let activeTabId = null;
 let nextTabId = 1;
+const MAX_CLOSED_TABS = 25;
+let closedTabStack = [];
 
 app.whenReady().then(() => {
   createWindow();
@@ -74,6 +76,7 @@ function createWindow() {
       submenu: [
         { label: 'New Tab', accelerator: 'CmdOrCtrl+T', click: () => createTab('about:blank') },
         { label: 'Close Tab', accelerator: 'CmdOrCtrl+W', click: () => { if (activeTabId !== null) closeTab(activeTabId); } },
+        { label: 'Reopen Closed Tab', accelerator: 'CmdOrCtrl+Shift+T', click: () => reopenClosedTab() },
       ],
     },
     {
@@ -101,7 +104,7 @@ function createWindow() {
   });
 }
 
-function createTab(url) {
+function createTab(url, insertIndex) {
   const id = String(nextTabId++);
   const view = new WebContentsView({
     webPreferences: {
@@ -114,7 +117,11 @@ function createTab(url) {
   view.setVisible(false);
 
   const tab = { id, view, title: 'New Tab', url: url || 'about:blank' };
-  tabs.push(tab);
+  if (insertIndex !== undefined && insertIndex >= 0 && insertIndex <= tabs.length) {
+    tabs.splice(insertIndex, 0, tab);
+  } else {
+    tabs.push(tab);
+  }
 
   view.webContents.on('did-navigate', (_, navUrl) => {
     tab.url = navUrl;
@@ -165,6 +172,9 @@ function closeTab(tabId) {
   if (idx === -1) return;
 
   const tab = tabs[idx];
+  closedTabStack.push({ url: tab.url, title: tab.title, index: idx });
+  if (closedTabStack.length > MAX_CLOSED_TABS) closedTabStack.shift();
+
   mainWindow.contentView.removeChildView(tab.view);
   tab.view.webContents.close();
   tabs.splice(idx, 1);
@@ -238,6 +248,31 @@ function moveTabLeft() {
   reorderTab(activeTabId, idx - 1);
 }
 
+function reopenClosedTab() {
+  if (closedTabStack.length === 0) return;
+  const entry = closedTabStack.pop();
+  const insertAt = Math.min(entry.index, tabs.length);
+  createTab(entry.url, insertAt);
+}
+
+function duplicateTab(tabId) {
+  const idx = tabs.findIndex(t => t.id === tabId);
+  if (idx === -1) return;
+  createTab(tabs[idx].url, idx + 1);
+}
+
+function closeOtherTabs(tabId) {
+  const toClose = tabs.filter(t => t.id !== tabId).map(t => t.id);
+  for (const id of toClose) closeTab(id);
+}
+
+function closeTabsToRight(tabId) {
+  const idx = tabs.findIndex(t => t.id === tabId);
+  if (idx === -1) return;
+  const toClose = tabs.slice(idx + 1).map(t => t.id);
+  for (const id of toClose) closeTab(id);
+}
+
 function getActiveView() {
   const tab = tabs.find(t => t.id === activeTabId);
   return tab ? tab.view : null;
@@ -308,6 +343,13 @@ Commands:
   new-tab [url]       - Open a new tab
   close-tab [index]   - Close a tab by index
   switch-tab <index>  - Switch to a tab by index
+
+Additional tab operations are available via the renderer page's window.api:
+  window.api.duplicateTab(tabId)      - Duplicate a tab
+  window.api.closeOtherTabs(tabId)    - Close all tabs except the specified one
+  window.api.closeTabsToRight(tabId)  - Close all tabs to the right of the specified one
+  window.api.reopenClosedTab()        - Reopen the most recently closed tab
+  window.api.reorderTab(tabId, index) - Move a tab to a new position
 
 You can also use Playwright directly by connecting over CDP:
 
@@ -472,6 +514,37 @@ ipcMain.on('switch-tab', (_, tabId) => {
 
 ipcMain.on('reorder-tab', (_, tabId, newIndex) => {
   reorderTab(tabId, newIndex);
+});
+
+ipcMain.on('reopen-closed-tab', () => {
+  reopenClosedTab();
+});
+
+ipcMain.on('duplicate-tab', (_, tabId) => {
+  duplicateTab(tabId);
+});
+
+ipcMain.on('close-other-tabs', (_, tabId) => {
+  closeOtherTabs(tabId);
+});
+
+ipcMain.on('close-tabs-to-right', (_, tabId) => {
+  closeTabsToRight(tabId);
+});
+
+ipcMain.on('tab-context-menu', (event, tabId) => {
+  const tab = tabs.find(t => t.id === tabId);
+  if (!tab) return;
+  const menu = Menu.buildFromTemplate([
+    { label: 'New Tab', click: () => createTab('about:blank') },
+    { label: 'Reload', click: () => tab.view.webContents.reload() },
+    { label: 'Duplicate', click: () => duplicateTab(tabId) },
+    { type: 'separator' },
+    { label: 'Close Tab', click: () => closeTab(tabId) },
+    { label: 'Close Other Tabs', click: () => closeOtherTabs(tabId) },
+    { label: 'Close Tabs to the Right', click: () => closeTabsToRight(tabId) },
+  ]);
+  menu.popup({ window: BrowserWindow.fromWebContents(event.sender) });
 });
 
 ipcMain.handle('get-tabs', () => {

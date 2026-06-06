@@ -56,3 +56,53 @@
 - `renderer/styles.css` — Tab bar styling
 - `playwright-bridge.js` — Tab management commands for scriptability
 - `test/app.test.js` — New tab tests, update existing tests
+
+## Reopen Closed Tab (Ctrl+Shift+T) Research
+
+### Chrome Behavior
+- Chrome maintains a **LIFO stack** of recently closed tabs, max **25 entries**
+- Each Ctrl+Shift+T pops the most recent entry
+- Tab reopens at its **original position** in the tab strip (or end if position no longer valid)
+- Chrome restores full back/forward navigation history + scroll position + form data
+
+### Electron 33 Limitations
+- `navigationHistory.getAllEntries()` and `getActiveIndex()` are available for reading history
+- `navigationHistory.restore()` requires **Electron 34+** — NOT available on 33.4.11
+- Practical approach: Save URL + tab position on close, reopen with `loadURL()` at original position
+- Full history restoration requires upgrading to Electron 34+
+
+### Data to Save on Tab Close
+```js
+{ url: String, title: String, index: Number }
+```
+
+## Context Menu Research
+
+### Approach
+- Use `Menu.buildFromTemplate()` + `menu.popup()` in main process (native OS menus)
+- Renderer sends tab ID via IPC on `contextmenu` event
+- Main process builds menu with tab-specific actions, executes them directly
+- State changes broadcast via existing `sendTabsChanged()` mechanism
+
+### IPC Pattern
+- New channel: `'tab-context-menu'` (renderer → main, sends tabId)
+- No return channel needed — actions execute directly in main process, state pushed via `tabs-changed`
+
+## Middle-Click Research
+
+### Implementation
+- Use `auxclick` event on tab elements, check `event.button === 1`
+- Reuse existing `closeTab` IPC channel — no new IPC needed
+- Must be wired up inside `renderTabs()` since it rebuilds DOM on every state change
+
+## Playwright Bridge Tab Sync Gap
+
+### Current Issue
+- Bridge operates via CDP (`context.newPage()`), completely bypassing main process's `createTab()`
+- Tabs created via bridge may not appear in the tab bar UI
+- Bridge uses 0-based index addressing; main process uses string IDs
+- `list-tabs` in bridge enumerates CDP pages, which may differ from main's `tabs[]` ordering
+
+### Missing Bridge Commands
+- `reorder-tab <from-index> <to-index>` — not available via CDP, needs IPC or HTTP endpoint
+- `duplicate-tab [index]` — not available via CDP

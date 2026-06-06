@@ -6099,6 +6099,16 @@ WARNING: This link could potentially be dangerous`)) {
       el.addEventListener("click", () => {
         window.api.switchTab(tab.id);
       });
+      el.addEventListener("auxclick", (e) => {
+        if (e.button === 1) {
+          e.preventDefault();
+          window.api.closeTab(tab.id);
+        }
+      });
+      el.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        window.api.showTabContextMenu(tab.id);
+      });
       el.addEventListener("dragstart", (e) => {
         dragTabId = tab.id;
         el.classList.add("dragging");

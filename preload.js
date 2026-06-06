@@ -19,6 +19,11 @@ contextBridge.exposeInMainWorld('api', {
   closeTab: (tabId) => ipcRenderer.send('close-tab', tabId),
   switchTab: (tabId) => ipcRenderer.send('switch-tab', tabId),
   reorderTab: (tabId, newIndex) => ipcRenderer.send('reorder-tab', tabId, newIndex),
+  reopenClosedTab: () => ipcRenderer.send('reopen-closed-tab'),
+  duplicateTab: (tabId) => ipcRenderer.send('duplicate-tab', tabId),
+  closeOtherTabs: (tabId) => ipcRenderer.send('close-other-tabs', tabId),
+  closeTabsToRight: (tabId) => ipcRenderer.send('close-tabs-to-right', tabId),
+  showTabContextMenu: (tabId) => ipcRenderer.send('tab-context-menu', tabId),
   getTabs: () => ipcRenderer.invoke('get-tabs'),
   onTabsChanged: (cb) => ipcRenderer.on('tabs-changed', (_, data) => cb(data)),
 });
