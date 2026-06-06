@@ -177,6 +177,36 @@ test.describe('Nori Browser', () => {
     expect(terminalText).toContain(`PW_CDP=http://localhost:${CDP_PORT}`);
   });
 
+  test('cursor position query (ESC[6n) gets a response without crashing', async () => {
+    const terminalEl = await window.$('.xterm-screen');
+    await terminalEl.click();
+
+    await window.keyboard.type("printf '\\033[6n' && read -t 0.5 -s -d R resp && echo CPR_OK || echo CPR_FAIL");
+    await window.keyboard.press('Enter');
+    await window.waitForTimeout(2000);
+
+    const terminalText = await window.$eval(
+      '.xterm-screen',
+      (el) => el.textContent
+    );
+    expect(terminalText).toContain('CPR_OK');
+  });
+
+  test('terminal process starts in a session directory under ~/nori-browser/', async () => {
+    const terminalEl = await window.$('.xterm-screen');
+    await terminalEl.click();
+
+    await window.keyboard.type('pwd');
+    await window.keyboard.press('Enter');
+    await window.waitForTimeout(1000);
+
+    const terminalText = await window.$eval(
+      '.xterm-screen',
+      (el) => el.textContent
+    );
+    expect(terminalText).toMatch(/\/nori-browser\/\d{8}-\d{6}/);
+  });
+
   test('playwright script in terminal can control the browser via CDP', async () => {
     const terminalEl = await window.$('.xterm-screen');
     await terminalEl.click();
