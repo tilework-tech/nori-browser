@@ -1666,3 +1666,458 @@ test.describe('Nori Browser Search', () => {
     }, { timeout: 10000 }).toBe(true);
   });
 });
+
+test.describe('Nori Browser Chrome Features', () => {
+  let electronApp;
+  let window;
+
+  let testServer;
+  let testServerPort;
+
+  const TINY_ICON = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+    'base64'
+  );
+
+  test.beforeAll(async () => {
+    testServer = http.createServer((req, res) => {
+      if (req.url === '/link-page') {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end('<html><head><title>Link Page</title></head><body><a id="test-link" href="/page-target">Click me</a><p id="some-text">Select this text for testing</p><input id="edit-field" type="text" value="editable" /><img id="test-img" src="/test-image.png" width="100" height="100" /></body></html>');
+      } else if (req.url === '/page-target') {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end('<html><head><title>Target Page</title></head><body><h1>Target</h1></body></html>');
+      } else if (req.url === '/test-image.png') {
+        res.writeHead(200, { 'Content-Type': 'image/png' });
+        res.end(TINY_ICON);
+      } else if (req.url === '/searchable') {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end('<html><head><title>Searchable</title></head><body><p>The quick brown fox jumps over the lazy dog. The fox is quick. The fox is brown.</p></body></html>');
+      } else if (req.url === '/download-file') {
+        res.writeHead(200, {
+          'Content-Type': 'application/octet-stream',
+          'Content-Disposition': 'attachment; filename="test-download.txt"',
+          'Content-Length': '13',
+        });
+        res.end('download test');
+      } else if (req.url === '/download-page') {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end('<html><head><title>Download Page</title></head><body><a id="dl-link" href="/download-file" download>Download</a></body></html>');
+      } else if (req.url === '/beforeunload-page') {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`<html><head><title>Unsaved Page</title></head><body>
+          <script>window.addEventListener('beforeunload', (e) => { e.preventDefault(); });</script>
+          <h1>Has unsaved changes</h1></body></html>`);
+      } else if (req.url === '/fullscreen-page') {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end('<html><head><title>Fullscreen Page</title></head><body><button id="fs-btn" onclick="document.documentElement.requestFullscreen()">Fullscreen</button></body></html>');
+      } else if (req.url === '/hover-link-page') {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end('<html><head><title>Hover Page</title></head><body><a id="hover-link" href="http://example.com/target-url" style="display:block;width:200px;height:50px;">Hover me</a><div id="no-link" style="width:200px;height:50px;margin-top:100px;">No link here</div></body></html>');
+      } else {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end('<html><head><title>Test Home</title></head><body><h1>Test Server</h1></body></html>');
+      }
+    });
+    await new Promise((resolve) => {
+      testServer.listen(0, '127.0.0.1', resolve);
+    });
+    testServerPort = testServer.address().port;
+
+    electronApp = await electron.launch({
+      args: [path.join(APP_PATH, 'main.js')],
+      env: {
+        ...process.env,
+        NORI_BROWSER_SHELL: '/bin/bash',
+        NORI_BROWSER_CDP_PORT: String(CDP_PORT + 50),
+        NORI_BROWSER_CONTROL_PORT: String(CONTROL_PORT + 50),
+      },
+    });
+
+    await electronApp.firstWindow();
+    for (let i = 0; i < 30; i++) {
+      const windows = electronApp.windows();
+      const renderer = windows.find((w) => w.url().includes('index.html'));
+      if (renderer) {
+        window = renderer;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
+    await window.waitForSelector('#tab-bar', { timeout: 10000 });
+  });
+
+  test.afterAll(async () => {
+    if (electronApp) {
+      await electronApp.close();
+      electronApp = null;
+    }
+    if (testServer) await new Promise((resolve) => testServer.close(resolve));
+  });
+
+  // --- Context Menu ---
+
+  test('opening a link URL in a new tab navigates to the target page', async () => {
+    const urlBar = await window.$('#url-bar');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill(`http://127.0.0.1:${testServerPort}/link-page`);
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => await urlBar.inputValue(), { timeout: 10000 }).toContain('/link-page');
+
+    const tabsBefore = await window.$$eval('#tab-bar .tab', els => els.length);
+
+    // Simulate what the context menu "Open Link in New Tab" does: create a tab with the link URL
+    const linkUrl = await electronApp.evaluate(async ({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      const views = win.contentView.children;
+      const visibleView = views.find(v => v.webContents && v.getBounds().width > 0);
+      return visibleView ? await visibleView.webContents.executeJavaScript(
+        `document.querySelector('#test-link').href`
+      ) : null;
+    });
+
+    // Use IPC to open the link in a new tab (same as context menu action)
+    await window.evaluate((url) => {
+      window.api.createTab(url);
+    }, linkUrl);
+
+    await window.waitForFunction(
+      (c) => document.querySelectorAll('#tab-bar .tab').length > c,
+      tabsBefore, { timeout: 5000 }
+    );
+
+    const tabsAfter = await window.$$eval('#tab-bar .tab', els => els.length);
+    expect(tabsAfter).toBe(tabsBefore + 1);
+
+    // New tab should navigate to the link URL
+    await expect.poll(async () => await urlBar.inputValue(), { timeout: 10000 }).toContain('/page-target');
+
+    // Clean up: close the extra tab
+    await window.evaluate(() => {
+      const tabs = document.querySelectorAll('#tab-bar .tab');
+      tabs[tabs.length - 1].querySelector('.tab-close')?.click();
+    });
+    await window.waitForFunction(
+      (c) => document.querySelectorAll('#tab-bar .tab').length === c,
+      tabsBefore, { timeout: 5000 }
+    );
+  });
+
+  // --- DevTools ---
+
+  test('Toggle Developer Tools menu item opens DevTools for the active tab', async () => {
+    await electronApp.evaluate(({ Menu }) => {
+      const menu = Menu.getApplicationMenu();
+      const viewMenu = menu.items.find(item => item.label === 'View');
+      const devToolsItem = viewMenu.submenu.items.find(item => item.label === 'Toggle Developer Tools');
+      devToolsItem.click();
+    });
+
+    await expect.poll(async () => {
+      return await electronApp.evaluate(({ BrowserWindow }) => {
+        const win = BrowserWindow.getAllWindows()[0];
+        const views = win.contentView.children;
+        const visibleView = views.find(v => v.webContents && v.getBounds().width > 0);
+        return visibleView ? visibleView.webContents.isDevToolsOpened() : false;
+      });
+    }, { timeout: 5000 }).toBe(true);
+
+    // Close DevTools to clean up
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      const views = win.contentView.children;
+      const visibleView = views.find(v => v.webContents && v.getBounds().width > 0);
+      if (visibleView) visibleView.webContents.closeDevTools();
+    });
+  });
+
+  // --- Find in Page ---
+
+  test('Ctrl+F shows the find bar', async () => {
+    const urlBar = await window.$('#url-bar');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill(`http://127.0.0.1:${testServerPort}/searchable`);
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => await urlBar.inputValue(), { timeout: 10000 }).toContain('/searchable');
+
+    // Trigger Ctrl+F via menu to show find bar
+    await electronApp.evaluate(({ Menu }) => {
+      const menu = Menu.getApplicationMenu();
+      const viewMenu = menu.items.find(item => item.label === 'View');
+      const findItem = viewMenu.submenu.items.find(item => item.label === 'Find in Page');
+      findItem.click();
+    });
+
+    await window.waitForSelector('#find-bar', { timeout: 5000 });
+    const findBarVisible = await window.$eval('#find-bar', el => el.offsetHeight > 0);
+    expect(findBarVisible).toBe(true);
+  });
+
+  test('find bar shows match count for text on the page', async () => {
+    const findInput = await window.$('#find-input');
+    await findInput.fill('fox');
+
+    await expect.poll(async () => {
+      return await window.$eval('#find-matches', el => el.textContent);
+    }, { timeout: 5000 }).toMatch(/\d+ of 3/);
+  });
+
+  test('find next advances to the next match', async () => {
+    const matchesBefore = await window.$eval('#find-matches', el => el.textContent);
+
+    await window.click('#find-next-btn');
+
+    await expect.poll(async () => {
+      const matchesAfter = await window.$eval('#find-matches', el => el.textContent);
+      return matchesAfter !== matchesBefore;
+    }, { timeout: 5000 }).toBe(true);
+  });
+
+  test('Escape closes the find bar', async () => {
+    // First open the find bar
+    await electronApp.evaluate(({ Menu }) => {
+      const menu = Menu.getApplicationMenu();
+      const viewMenu = menu.items.find(item => item.label === 'View');
+      const findItem = viewMenu.submenu.items.find(item => item.label === 'Find in Page');
+      findItem.click();
+    });
+    await window.waitForSelector('#find-bar', { timeout: 5000 });
+
+    // Press Escape to close it
+    const findInput = await window.$('#find-input');
+    await findInput.focus();
+    await window.keyboard.press('Escape');
+
+    await window.waitForFunction(() => {
+      const findBar = document.querySelector('#find-bar');
+      return findBar && findBar.classList.contains('hidden');
+    }, { timeout: 5000 });
+
+    const findBarHidden = await window.$eval('#find-bar', el => el.classList.contains('hidden'));
+    expect(findBarHidden).toBe(true);
+  });
+
+  // --- Zoom ---
+
+  test('zoom in increases the zoom factor above 1.0', async () => {
+    // Reset zoom first
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      const views = win.contentView.children;
+      const visibleView = views.find(v => v.webContents && v.getBounds().width > 0);
+      if (visibleView) visibleView.webContents.setZoomFactor(1.0);
+    });
+
+    await electronApp.evaluate(({ Menu }) => {
+      const menu = Menu.getApplicationMenu();
+      const viewMenu = menu.items.find(item => item.label === 'View');
+      const zoomInItem = viewMenu.submenu.items.find(item => item.label === 'Zoom In');
+      zoomInItem.click();
+    });
+
+    const zoomFactor = await electronApp.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      const views = win.contentView.children;
+      const visibleView = views.find(v => v.webContents && v.getBounds().width > 0);
+      return visibleView ? visibleView.webContents.getZoomFactor() : 1.0;
+    });
+    expect(zoomFactor).toBeGreaterThan(1.0);
+  });
+
+  test('zoom out decreases the zoom factor below 1.0', async () => {
+    // Reset zoom first
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      const views = win.contentView.children;
+      const visibleView = views.find(v => v.webContents && v.getBounds().width > 0);
+      if (visibleView) visibleView.webContents.setZoomFactor(1.0);
+    });
+
+    await electronApp.evaluate(({ Menu }) => {
+      const menu = Menu.getApplicationMenu();
+      const viewMenu = menu.items.find(item => item.label === 'View');
+      const zoomOutItem = viewMenu.submenu.items.find(item => item.label === 'Zoom Out');
+      zoomOutItem.click();
+    });
+
+    const zoomFactor = await electronApp.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      const views = win.contentView.children;
+      const visibleView = views.find(v => v.webContents && v.getBounds().width > 0);
+      return visibleView ? visibleView.webContents.getZoomFactor() : 1.0;
+    });
+    expect(zoomFactor).toBeLessThan(1.0);
+  });
+
+  test('reset zoom restores zoom factor to exactly 1.0', async () => {
+    await electronApp.evaluate(({ Menu }) => {
+      const menu = Menu.getApplicationMenu();
+      const viewMenu = menu.items.find(item => item.label === 'View');
+      const resetItem = viewMenu.submenu.items.find(item => item.label === 'Reset Zoom');
+      resetItem.click();
+    });
+
+    const zoomFactor = await electronApp.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      const views = win.contentView.children;
+      const visibleView = views.find(v => v.webContents && v.getBounds().width > 0);
+      return visibleView ? visibleView.webContents.getZoomFactor() : 0;
+    });
+    expect(zoomFactor).toBeCloseTo(1.0, 2);
+  });
+
+  // --- Downloads ---
+
+  test('downloading a file shows the download shelf', async () => {
+    const urlBar = await window.$('#url-bar');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill(`http://127.0.0.1:${testServerPort}/download-page`);
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => await urlBar.inputValue(), { timeout: 10000 }).toContain('/download-page');
+
+    // Click the download link via CDP
+    let cdpBrowser;
+    try {
+      cdpBrowser = await chromium.connectOverCDP(`http://localhost:${CDP_PORT + 50}`);
+      const allPages = cdpBrowser.contexts().flatMap((c) => c.pages());
+      const browserPage = allPages.find((p) => !p.url().startsWith('file://'));
+      if (browserPage) {
+        await browserPage.click('#dl-link');
+      }
+    } finally {
+      if (cdpBrowser) await cdpBrowser.close();
+    }
+
+    // Wait for download shelf to appear
+    await window.waitForSelector('#download-shelf', { timeout: 10000 });
+    const shelfVisible = await window.$eval('#download-shelf', el => el.offsetHeight > 0);
+    expect(shelfVisible).toBe(true);
+
+    // Verify filename is shown
+    const hasFilename = await window.evaluate(() => {
+      const shelf = document.querySelector('#download-shelf');
+      return shelf ? shelf.textContent.includes('test-download.txt') : false;
+    });
+    expect(hasFilename).toBe(true);
+  });
+
+  // --- Print ---
+
+  test('Print menu item exists in File menu', async () => {
+    const hasItem = await electronApp.evaluate(({ Menu }) => {
+      const menu = Menu.getApplicationMenu();
+      const fileMenu = menu.items.find(item => item.label === 'File');
+      const printItem = fileMenu.submenu.items.find(item => item.label === 'Print');
+      return !!printItem;
+    });
+    expect(hasItem).toBe(true);
+  });
+
+  // --- Fullscreen ---
+
+  test('F11 toggles window fullscreen', async () => {
+    const wasFull = await electronApp.evaluate(({ BrowserWindow }) => {
+      return BrowserWindow.getAllWindows()[0].isFullScreen();
+    });
+    expect(wasFull).toBe(false);
+
+    await electronApp.evaluate(({ Menu }) => {
+      const menu = Menu.getApplicationMenu();
+      const viewMenu = menu.items.find(item => item.label === 'View');
+      const fsItem = viewMenu.submenu.items.find(item => item.label === 'Toggle Full Screen');
+      fsItem.click();
+    });
+
+    await expect.poll(async () => {
+      return await electronApp.evaluate(({ BrowserWindow }) => {
+        return BrowserWindow.getAllWindows()[0].isFullScreen();
+      });
+    }, { timeout: 5000 }).toBe(true);
+
+    // Toggle back
+    await electronApp.evaluate(({ Menu }) => {
+      const menu = Menu.getApplicationMenu();
+      const viewMenu = menu.items.find(item => item.label === 'View');
+      const fsItem = viewMenu.submenu.items.find(item => item.label === 'Toggle Full Screen');
+      fsItem.click();
+    });
+
+    await expect.poll(async () => {
+      return await electronApp.evaluate(({ BrowserWindow }) => {
+        return BrowserWindow.getAllWindows()[0].isFullScreen();
+      });
+    }, { timeout: 5000 }).toBe(false);
+  });
+
+  // --- Status Bar ---
+
+  test('hovering over a link shows its URL in the status bar', async () => {
+    const urlBar = await window.$('#url-bar');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill(`http://127.0.0.1:${testServerPort}/hover-link-page`);
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => await urlBar.inputValue(), { timeout: 10000 }).toContain('/hover-link-page');
+
+    // Hover over the link via CDP to trigger update-target-url
+    let cdpBrowser;
+    try {
+      cdpBrowser = await chromium.connectOverCDP(`http://localhost:${CDP_PORT + 50}`);
+      const allPages = cdpBrowser.contexts().flatMap((c) => c.pages());
+      const browserPage = allPages.find((p) => !p.url().startsWith('file://'));
+      if (browserPage) {
+        await browserPage.hover('#hover-link');
+      }
+    } finally {
+      if (cdpBrowser) await cdpBrowser.close();
+    }
+
+    await window.waitForSelector('#status-bar', { timeout: 5000 });
+    await expect.poll(async () => {
+      return await window.evaluate(() => {
+        const bar = document.querySelector('#status-bar');
+        return bar ? bar.textContent : '';
+      });
+    }, { timeout: 5000 }).toContain('example.com/target-url');
+  });
+
+  test('status bar hides when not hovering a link', async () => {
+    // Move cursor away from the link via CDP
+    let cdpBrowser;
+    try {
+      cdpBrowser = await chromium.connectOverCDP(`http://localhost:${CDP_PORT + 50}`);
+      const allPages = cdpBrowser.contexts().flatMap((c) => c.pages());
+      const browserPage = allPages.find((p) => !p.url().startsWith('file://'));
+      if (browserPage) {
+        await browserPage.hover('#no-link');
+      }
+    } finally {
+      if (cdpBrowser) await cdpBrowser.close();
+    }
+
+    await expect.poll(async () => {
+      return await window.evaluate(() => {
+        const bar = document.querySelector('#status-bar');
+        return !bar || bar.offsetHeight === 0 || bar.classList.contains('hidden');
+      });
+    }, { timeout: 5000 }).toBe(true);
+  });
+
+  // --- Permissions ---
+
+  test('geolocation permission is denied by default', async () => {
+    const denied = await electronApp.evaluate(async ({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      const views = win.contentView.children;
+      const visibleView = views.find(v => v.webContents && v.getBounds().width > 0);
+      if (visibleView) {
+        const result = await visibleView.webContents.executeJavaScript(`
+          navigator.permissions.query({ name: 'geolocation' }).then(r => r.state)
+        `);
+        return result;
+      }
+      return null;
+    });
+    expect(denied).toBe('denied');
+  });
+});
