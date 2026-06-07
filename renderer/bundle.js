@@ -6060,45 +6060,28 @@ WARNING: This link could potentially be dangerous`)) {
   var omnibarDropdown = document.getElementById("omnibar-dropdown");
   var omnibarSelectedIndex = -1;
   var omnibarDebounceTimer = null;
+  var omnibarResults = [];
+  function hideOmnibar() {
+    omnibarResults = [];
+    omnibarSelectedIndex = -1;
+    window.api.omnibarVisibility(false);
+    window.api.showOmnibarPopup([]);
+  }
   function renderOmnibar(results) {
-    omnibarDropdown.innerHTML = "";
     omnibarSelectedIndex = -1;
     if (!results || results.length === 0) {
-      omnibarDropdown.classList.remove("visible");
+      hideOmnibar();
       return;
     }
-    for (const item of results) {
-      const el = document.createElement("div");
-      el.className = "omnibar-item";
-      el.dataset.url = item.url;
-      if (item.source === "bookmark") {
-        const star = document.createElement("span");
-        star.className = "omnibar-bookmark-star";
-        star.textContent = "\u2605";
-        el.appendChild(star);
-      }
-      const title = document.createElement("span");
-      title.className = "omnibar-title";
-      title.textContent = item.title || item.url;
-      el.appendChild(title);
-      const url = document.createElement("span");
-      url.className = "omnibar-url";
-      url.textContent = item.url;
-      el.appendChild(url);
-      el.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        window.api.navigate(item.url);
-        omnibarDropdown.classList.remove("visible");
-      });
-      omnibarDropdown.appendChild(el);
-    }
-    omnibarDropdown.classList.add("visible");
+    omnibarResults = results;
+    window.api.omnibarVisibility(true);
+    window.api.showOmnibarPopup(results);
   }
   urlBar.addEventListener("input", () => {
     clearTimeout(omnibarDebounceTimer);
     const query = urlBar.value.trim();
     if (!query) {
-      omnibarDropdown.classList.remove("visible");
+      hideOmnibar();
       return;
     }
     omnibarDebounceTimer = setTimeout(async () => {
@@ -6109,46 +6092,44 @@ WARNING: This link could potentially be dangerous`)) {
     }, 150);
   });
   urlBar.addEventListener("keydown", (e) => {
-    const items = omnibarDropdown.querySelectorAll(".omnibar-item");
-    if (e.key === "ArrowDown" && items.length > 0) {
+    if (e.key === "ArrowDown" && omnibarResults.length > 0) {
       e.preventDefault();
-      omnibarSelectedIndex = Math.min(omnibarSelectedIndex + 1, items.length - 1);
-      items.forEach((el, i) => el.classList.toggle("selected", i === omnibarSelectedIndex));
+      omnibarSelectedIndex = Math.min(omnibarSelectedIndex + 1, omnibarResults.length - 1);
+      window.api.showOmnibarPopup(omnibarResults, omnibarSelectedIndex);
       return;
     }
-    if (e.key === "ArrowUp" && items.length > 0) {
+    if (e.key === "ArrowUp" && omnibarResults.length > 0) {
       e.preventDefault();
       omnibarSelectedIndex = Math.max(omnibarSelectedIndex - 1, -1);
-      items.forEach((el, i) => el.classList.toggle("selected", i === omnibarSelectedIndex));
+      window.api.showOmnibarPopup(omnibarResults, omnibarSelectedIndex);
       return;
     }
     if (e.key === "Escape") {
-      omnibarDropdown.classList.remove("visible");
-      omnibarSelectedIndex = -1;
+      hideOmnibar();
       return;
     }
     if (e.key === "Enter") {
-      if (omnibarSelectedIndex >= 0 && omnibarSelectedIndex < items.length) {
-        const selectedUrl = items[omnibarSelectedIndex].dataset.url;
-        window.api.navigate(selectedUrl);
-        omnibarDropdown.classList.remove("visible");
-        omnibarSelectedIndex = -1;
+      if (omnibarSelectedIndex >= 0 && omnibarSelectedIndex < omnibarResults.length) {
+        window.api.navigate(omnibarResults[omnibarSelectedIndex].url);
+        hideOmnibar();
       } else {
         window.api.navigate(urlBar.value);
-        omnibarDropdown.classList.remove("visible");
+        hideOmnibar();
       }
       return;
     }
   });
   urlBar.addEventListener("blur", () => {
     setTimeout(() => {
-      omnibarDropdown.classList.remove("visible");
-      omnibarSelectedIndex = -1;
+      hideOmnibar();
     }, 200);
   });
   window.api.onUrlChanged((url) => {
     urlBar.value = url;
-    omnibarDropdown.classList.remove("visible");
+    hideOmnibar();
+  });
+  window.api.onOmnibarSelected(() => {
+    hideOmnibar();
   });
   document.getElementById("btn-back").addEventListener("click", () => window.api.goBack());
   document.getElementById("btn-forward").addEventListener("click", () => window.api.goForward());

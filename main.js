@@ -77,6 +77,8 @@ let sidebarVisible = true;
 let sessionDir;
 const TOOLBAR_HEIGHT = 48;
 const TAB_BAR_HEIGHT = 36;
+let omnibarOpen = false;
+let omnibarPopup = null;
 
 let tabs = [];
 let activeTabId = null;
@@ -984,6 +986,85 @@ function searchBookmarks(node, query, results) {
   }
 }
 
+ipcMain.on('omnibar-visibility', (_, visible) => {
+  omnibarOpen = visible;
+  if (!visible && omnibarPopup && !omnibarPopup.isDestroyed()) {
+    omnibarPopup.hide();
+  }
+});
+
+ipcMain.on('omnibar-show-popup', (_, results, selectedIndex) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (!results || results.length === 0) {
+    if (omnibarPopup && !omnibarPopup.isDestroyed()) omnibarPopup.hide();
+    return;
+  }
+
+  const mainBounds = mainWindow.getBounds();
+  const contentBounds = mainWindow.getContentBounds();
+  const titleBarHeight = contentBounds.y - mainBounds.y;
+  const dividerWidth = sidebarVisible ? 4 : 0;
+  const popupX = mainBounds.x + sidebarWidth + dividerWidth + 40;
+  const popupY = mainBounds.y + titleBarHeight + TOOLBAR_HEIGHT;
+  const popupWidth = contentBounds.width - sidebarWidth - dividerWidth - 80;
+  const itemHeight = 36;
+  const popupHeight = Math.min(results.length, 8) * itemHeight + 8;
+
+  if (!omnibarPopup || omnibarPopup.isDestroyed()) {
+    omnibarPopup = new BrowserWindow({
+      parent: mainWindow,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      movable: false,
+      skipTaskbar: true,
+      show: false,
+      focusable: false,
+      webPreferences: { nodeIntegration: false, contextIsolation: true },
+    });
+  }
+
+  omnibarPopup.setBounds({ x: popupX, y: popupY, width: popupWidth, height: popupHeight });
+
+  const html = `<!DOCTYPE html><html><head><style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: transparent; overflow: hidden; }
+    #dropdown { background: #2d2d2d; border: 1px solid #555; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); overflow: hidden; }
+    .item { display: flex; align-items: center; gap: 8px; padding: 8px 14px; cursor: pointer; font-size: 13px; height: ${itemHeight}px; }
+    .item:hover, .item.selected { background: #094771; }
+    .star { color: #e8a100; flex-shrink: 0; font-size: 14px; }
+    .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #d4d4d4; }
+    .url { flex-shrink: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #888; font-size: 12px; max-width: 50%; }
+  </style></head><body><div id="dropdown">${results.map((r, i) => `
+    <div class="item${i === selectedIndex ? ' selected' : ''}" data-url="${r.url.replace(/"/g, '&quot;')}">
+      ${r.source === 'bookmark' ? '<span class="star">★</span>' : ''}
+      <span class="title">${(r.title || r.url).replace(/</g, '&lt;')}</span>
+      <span class="url">${r.url.replace(/</g, '&lt;')}</span>
+    </div>`).join('')}</div>
+  <script>document.addEventListener('mousedown', e => {
+    const item = e.target.closest('.item');
+    if (item) {
+      e.preventDefault();
+      window.location.hash = item.dataset.url;
+    }
+  });</script></body></html>`;
+
+  omnibarPopup.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+  omnibarPopup.webContents.on('did-navigate-in-page', (_, url) => {
+    const hash = decodeURIComponent(url.split('#')[1] || '');
+    if (hash) {
+      const view = getActiveView();
+      if (view) {
+        const resolved = resolveInput(hash);
+        if (resolved) view.webContents.loadURL(resolved);
+      }
+      omnibarPopup.hide();
+      mainWindow.webContents.send('omnibar-selected');
+    }
+  });
+  omnibarPopup.showInactive();
+});
+
 ipcMain.handle('omnibar-query', (_, query) => {
   if (!query || query.length < 1) return [];
   const lowerQuery = query.toLowerCase();
@@ -1011,18 +1092,28 @@ ipcMain.handle('omnibar-query', (_, query) => {
       FROM urls
       WHERE url LIKE '%' || ? || '%' OR title LIKE '%' || ? || '%'
       ORDER BY typed_count DESC, visit_count DESC, last_visit_time DESC
-      LIMIT 10
+      LIMIT 200
     `).all(lowerQuery, lowerQuery);
     db.close();
 
+    const now = Date.now() * 1000 + 11644473600000000;
     for (const row of rows) {
       if (!seenUrls.has(row.url)) {
-        results.push({ url: row.url, title: row.title, source: 'history' });
+        const urlLower = row.url.toLowerCase();
+        const titleLower = (row.title || '').toLowerCase();
+        const domainStart = urlLower.indexOf('://') + 3;
+        const domain = urlLower.slice(domainStart);
+        const prefixBoost = domain.startsWith(lowerQuery) || titleLower.startsWith(lowerQuery) ? 10 : 0;
+        const ageHours = Math.max(1, (now - row.last_visit_time) / 3600000000);
+        const recencyScore = Math.max(0, 10 - Math.log2(ageHours / 24));
+        const score = prefixBoost + (row.typed_count * 4) + (row.visit_count * 0.5) + recencyScore;
+        results.push({ url: row.url, title: row.title, source: 'history', score });
         seenUrls.add(row.url);
       }
     }
   } catch {}
 
+  results.sort((a, b) => (b.score || 0) - (a.score || 0));
   return results.slice(0, 8);
 });
 

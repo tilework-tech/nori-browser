@@ -29,6 +29,9 @@ contextBridge.exposeInMainWorld('api', {
   getTabs: () => ipcRenderer.invoke('get-tabs'),
   onTabsChanged: (cb) => ipcRenderer.on('tabs-changed', (_, data) => cb(data)),
   queryOmnibar: (query) => ipcRenderer.invoke('omnibar-query', query),
+  omnibarVisibility: (visible) => ipcRenderer.send('omnibar-visibility', visible),
+  showOmnibarPopup: (results, selectedIndex) => ipcRenderer.send('omnibar-show-popup', results, selectedIndex),
+  onOmnibarSelected: (cb) => ipcRenderer.on('omnibar-selected', () => cb()),
   // Find in page
   findInPage: (text) => ipcRenderer.send('find-in-page', text),
   findNext: (forward) => ipcRenderer.send('find-next', forward),
