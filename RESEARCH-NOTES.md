@@ -149,6 +149,37 @@
 - `playwright-bridge.js` — Add pin-tab/unpin-tab commands for scriptability
 - `test/app.test.js` — Pinning tests
 
+## Tab Favicons & Loading Indicators Research
+
+### Electron Favicon API
+- `webContents.on('page-favicon-updated', (event, favicons))` — `favicons` is `string[]` of URLs
+- Not data URIs, not nativeImage — plain URLs usable directly in `<img src="...">`
+- Use `favicons[0]` from the latest emission (event may fire multiple times)
+- Not all pages emit this event (e.g., `about:blank`). Need a default fallback icon.
+- Reset favicon on new navigation start to avoid stale favicons
+
+### Electron Loading State API
+- `webContents.on('did-start-loading')` — page started loading (no params)
+- `webContents.on('did-stop-loading')` — page finished loading (no params)
+- `webContents.isLoading()` — synchronous boolean check
+
+### Chrome Tab Spinner (Throbber)
+- 16×16px spinning arc in the favicon area during page load
+- Default color: `#4285F4` (Google Blue)
+- Full rotation cycle: ~1.568s
+- CSS approach: `border` with `border-radius: 50%`, one colored border side, `@keyframes rotate`
+
+### Data Model Changes
+- Add `favicon: ''` and `isLoading: false` to tab object in `createTab()`
+- Two serialization points: `sendTabsChanged()` (line 321) and `ipcMain.handle('get-tabs')` (line 602)
+- Renderer `renderTabs()` must consume `tab.favicon` and `tab.isLoading`
+
+### Files Requiring Changes
+- `main.js` — Add favicon/loading fields to tab, listen for events, include in serialization
+- `renderer/renderer.js` — Display favicon img and loading spinner in `renderTabs()`
+- `renderer/styles.css` — Favicon img styles, spinner animation CSS
+- `test/app.test.js` — Tests for favicon display, loading state, API reporting
+
 ## Playwright Bridge Tab Sync Gap
 
 ### Current Issue

@@ -116,7 +116,7 @@ function createTab(url, insertIndex) {
   mainWindow.contentView.addChildView(view);
   view.setVisible(false);
 
-  const tab = { id, view, title: 'New Tab', url: url || 'about:blank', pinned: false };
+  const tab = { id, view, title: 'New Tab', url: url || 'about:blank', pinned: false, favicon: '', isLoading: false };
   if (insertIndex !== undefined && insertIndex >= 0 && insertIndex <= tabs.length) {
     tabs.splice(insertIndex, 0, tab);
   } else {
@@ -145,6 +145,28 @@ function createTab(url, insertIndex) {
       mainWindow.setTitle(`${title} — Nori Browser`);
     }
     sendTabsChanged();
+  });
+
+  view.webContents.on('page-favicon-updated', (_, favicons) => {
+    tab.favicon = favicons[0] || '';
+    sendTabsChanged();
+  });
+
+  view.webContents.on('did-start-loading', () => {
+    tab.isLoading = true;
+    sendTabsChanged();
+  });
+
+  view.webContents.on('did-stop-loading', () => {
+    tab.isLoading = false;
+    sendTabsChanged();
+  });
+
+  view.webContents.on('did-start-navigation', (details) => {
+    if (details.isMainFrame && !details.isSameDocument) {
+      tab.favicon = '';
+      sendTabsChanged();
+    }
   });
 
   view.webContents.on('before-input-event', (event, input) => {
@@ -321,7 +343,7 @@ function getActiveView() {
 function sendTabsChanged() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.send('tabs-changed', {
-    tabs: tabs.map(t => ({ id: t.id, title: t.title, url: t.url, pinned: t.pinned })),
+    tabs: tabs.map(t => ({ id: t.id, title: t.title, url: t.url, pinned: t.pinned, favicon: t.favicon, isLoading: t.isLoading })),
     activeTabId,
   });
 }
@@ -601,7 +623,7 @@ ipcMain.on('tab-context-menu', (event, tabId) => {
 
 ipcMain.handle('get-tabs', () => {
   return {
-    tabs: tabs.map(t => ({ id: t.id, title: t.title, url: t.url, pinned: t.pinned })),
+    tabs: tabs.map(t => ({ id: t.id, title: t.title, url: t.url, pinned: t.pinned, favicon: t.favicon, isLoading: t.isLoading })),
     activeTabId,
   };
 });

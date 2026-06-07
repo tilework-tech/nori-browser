@@ -1349,3 +1349,196 @@ test.describe('Nori Browser Tab Pinning', () => {
     }
   });
 });
+
+test.describe('Nori Browser Tab Favicons & Loading', () => {
+  let electronApp;
+  let window;
+
+  let testServer;
+  let testServerPort;
+
+  const TINY_ICON = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+    'base64'
+  );
+
+  test.beforeAll(async () => {
+    testServer = http.createServer((req, res) => {
+      if (req.url === '/favicon-test.png') {
+        res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-cache' });
+        res.end(TINY_ICON);
+      } else if (req.url === '/favicon-test-b.png') {
+        res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-cache' });
+        res.end(TINY_ICON);
+      } else if (req.url === '/page-with-favicon') {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`<html><head><title>Favicon Page</title><link rel="icon" href="/favicon-test.png"></head><body><h1>Has Favicon</h1></body></html>`);
+      } else if (req.url === '/page-with-favicon-b') {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`<html><head><title>Favicon Page B</title><link rel="icon" href="/favicon-test-b.png"></head><body><h1>Has Favicon B</h1></body></html>`);
+      } else if (req.url === '/slow-page') {
+        setTimeout(() => {
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          res.end('<html><head><title>Slow Page</title></head><body><h1>Finally Loaded</h1></body></html>');
+        }, 3000);
+      } else {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end('<html><head><title>Test Home</title></head><body><h1>Test Server</h1></body></html>');
+      }
+    });
+    await new Promise((resolve) => {
+      testServer.listen(0, '127.0.0.1', resolve);
+    });
+    testServerPort = testServer.address().port;
+
+    electronApp = await electron.launch({
+      args: [path.join(APP_PATH, 'main.js')],
+      env: {
+        ...process.env,
+        NORI_BROWSER_SHELL: '/bin/bash',
+        NORI_BROWSER_CDP_PORT: String(CDP_PORT + 30),
+        NORI_BROWSER_CONTROL_PORT: String(CONTROL_PORT + 30),
+      },
+    });
+
+    await electronApp.firstWindow();
+    for (let i = 0; i < 30; i++) {
+      const windows = electronApp.windows();
+      const renderer = windows.find((w) => w.url().includes('index.html'));
+      if (renderer) {
+        window = renderer;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
+    await window.waitForSelector('#tab-bar', { timeout: 10000 });
+  });
+
+  test.afterAll(async () => {
+    if (electronApp) {
+      await electronApp.close();
+      electronApp = null;
+    }
+    if (testServer) await new Promise((resolve) => testServer.close(resolve));
+  });
+
+  test('tab displays favicon after navigating to a page with one', async () => {
+    const urlBar = await window.$('#url-bar');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill(`http://127.0.0.1:${testServerPort}/page-with-favicon`);
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => await urlBar.inputValue(), { timeout: 10000 }).toContain('/page-with-favicon');
+
+    await expect.poll(async () => {
+      return await window.evaluate(() => {
+        const tab = document.querySelector('#tab-bar .tab.active');
+        const img = tab && tab.querySelector('.tab-favicon');
+        return img ? img.src : '';
+      });
+    }, { timeout: 10000 }).toContain('/favicon-test.png');
+  });
+
+  test('favicon updates when navigating to a different page', async () => {
+    const urlBar = await window.$('#url-bar');
+
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill(`http://127.0.0.1:${testServerPort}/page-with-favicon`);
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => await urlBar.inputValue(), { timeout: 10000 }).toContain('/page-with-favicon');
+    await expect.poll(async () => {
+      return await window.evaluate(() => {
+        const tab = document.querySelector('#tab-bar .tab.active');
+        const img = tab && tab.querySelector('.tab-favicon');
+        return img ? img.src : '';
+      });
+    }, { timeout: 10000 }).toContain('/favicon-test.png');
+
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill(`http://127.0.0.1:${testServerPort}/page-with-favicon-b`);
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => await urlBar.inputValue(), { timeout: 10000 }).toContain('/page-with-favicon-b');
+
+    await expect.poll(async () => {
+      return await window.evaluate(() => {
+        const tab = document.querySelector('#tab-bar .tab.active');
+        const img = tab && tab.querySelector('.tab-favicon');
+        return img ? img.src : '';
+      });
+    }, { timeout: 10000 }).toContain('/favicon-test-b.png');
+  });
+
+  test('loading spinner appears during navigation and disappears after', async () => {
+    const urlBar = await window.$('#url-bar');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill(`http://127.0.0.1:${testServerPort}/slow-page`);
+    await window.keyboard.press('Enter');
+
+    await expect.poll(async () => {
+      return await window.evaluate(() => {
+        const tab = document.querySelector('#tab-bar .tab.active');
+        return tab ? tab.querySelector('.tab-spinner') !== null : false;
+      });
+    }, { timeout: 5000 }).toBe(true);
+
+    await expect.poll(async () => {
+      return await window.evaluate(() => {
+        const tab = document.querySelector('#tab-bar .tab.active');
+        return tab ? tab.querySelector('.tab-spinner') === null : false;
+      });
+    }, { timeout: 10000 }).toBe(true);
+  });
+
+  test('getTabs API includes favicon URL for a page that has one', async () => {
+    // The active tab should still be on page-with-favicon or slow-page from prior tests.
+    // Navigate to a page with a known favicon to ensure clean state.
+    const urlBar = await window.$('#url-bar');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill(`http://127.0.0.1:${testServerPort}/page-with-favicon`);
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => await urlBar.inputValue(), { timeout: 10000 }).toContain('/page-with-favicon');
+
+    await expect.poll(async () => {
+      const data = await window.evaluate(async () => await window.api.getTabs());
+      const activeTab = data.tabs.find(t => t.id === data.activeTabId);
+      return activeTab ? activeTab.favicon : '';
+    }, { timeout: 10000 }).toContain('/favicon-test.png');
+  });
+
+  test('pinned tab shows favicon image', async () => {
+    const urlBar = await window.$('#url-bar');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill(`http://127.0.0.1:${testServerPort}/page-with-favicon`);
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => await urlBar.inputValue(), { timeout: 10000 }).toContain('/page-with-favicon');
+
+    await expect.poll(async () => {
+      return await window.evaluate(() => {
+        const tab = document.querySelector('#tab-bar .tab.active');
+        const img = tab && tab.querySelector('.tab-favicon');
+        return img ? img.src : '';
+      });
+    }, { timeout: 10000 }).toContain('/favicon-test.png');
+
+    await window.evaluate(() => {
+      const tab = document.querySelector('#tab-bar .tab.active');
+      window.api.pinTab(tab.dataset.tabId);
+    });
+    await window.waitForFunction(() => document.querySelector('#tab-bar .tab.pinned') !== null, { timeout: 5000 });
+
+    await expect.poll(async () => {
+      return await window.evaluate(() => {
+        const pinnedTab = document.querySelector('#tab-bar .tab.pinned');
+        const img = pinnedTab && pinnedTab.querySelector('.tab-favicon');
+        return img !== null && img.offsetWidth > 0 && img.offsetHeight > 0;
+      });
+    }, { timeout: 5000 }).toBe(true);
+
+    // Clean up: unpin
+    await window.evaluate(() => {
+      const pinned = document.querySelector('#tab-bar .tab.pinned');
+      if (pinned) window.api.unpinTab(pinned.dataset.tabId);
+    });
+    await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab.pinned').length === 0, { timeout: 5000 });
+  });
+});

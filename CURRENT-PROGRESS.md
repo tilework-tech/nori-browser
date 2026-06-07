@@ -34,6 +34,15 @@
   - Scriptable IPC API: pinTab(tabId), unpinTab(tabId)
   - getTabs() includes pinned boolean field
 - Full e2e test suite (45 tests passing: 16 core + 17 tab + 12 pinning tests)
+- Tab favicons and loading indicators (Chrome parity):
+  - Favicon display in tabs via `page-favicon-updated` webContents event
+  - Favicon resets on main-frame navigation to avoid stale icons
+  - CSS loading spinner (Chrome-style throbber) shown during page load via `did-start-loading`/`did-stop-loading`
+  - Pinned tabs display favicon as their only visual content
+  - Favicon image error handling with graceful hide on broken URLs
+  - CSP extended with `img-src` directive to allow external favicon loading
+  - `getTabs()` and `sendTabsChanged()` include `favicon` and `isLoading` fields
+- Full e2e test suite (50 tests passing: 16 core + 17 tab + 12 pinning + 5 favicon/loading tests)
 
 ## In Progress
 - (nothing currently in progress)

@@ -88,6 +88,22 @@ function renderTabs(data) {
     el.dataset.tabId = tab.id;
     el.draggable = true;
 
+    if (tab.isLoading) {
+      const spinner = document.createElement('div');
+      spinner.className = 'tab-spinner';
+      el.appendChild(spinner);
+    } else if (tab.favicon) {
+      const img = document.createElement('img');
+      img.className = 'tab-favicon';
+      img.src = tab.favicon;
+      img.width = 16;
+      img.height = 16;
+      img.addEventListener('error', () => {
+        img.style.display = 'none';
+      });
+      el.appendChild(img);
+    }
+
     const title = document.createElement('span');
     title.className = 'tab-title';
     title.textContent = tab.title || 'New Tab';

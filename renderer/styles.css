@@ -181,6 +181,28 @@ html, body {
   color: #fff;
 }
 
+.tab-favicon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.tab-spinner {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border: 2px solid transparent;
+  border-top-color: #4285F4;
+  border-radius: 50%;
+  animation: tab-spin 1s linear infinite;
+  box-sizing: border-box;
+}
+
+@keyframes tab-spin {
+  to { transform: rotate(360deg); }
+}
+
 .tab-title {
   flex: 1;
   overflow: hidden;
