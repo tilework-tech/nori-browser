@@ -530,11 +530,25 @@ ipcMain.on('terminal-resize', (_, { cols, rows }) => {
   }
 });
 
+function resolveInput(input) {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  if (/^(https?|ftp):\/\//i.test(trimmed)) return trimmed;
+  if (/\s/.test(trimmed)) return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`;
+  if (/^localhost(:\d+)?(\/.*)?$/i.test(trimmed)) return `http://${trimmed}`;
+  if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?(\/.*)?$/.test(trimmed)) return `http://${trimmed}`;
+  if (trimmed.includes('.')) return `https://${trimmed}`;
+  if (/^[a-zA-Z0-9-]+(:\d+)(\/.*)?$/.test(trimmed)) return `http://${trimmed}`;
+  if (trimmed.endsWith('/')) return `https://${trimmed}`;
+  return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`;
+}
+
 ipcMain.on('navigate', (_, url) => {
   const view = getActiveView();
   if (!view) return;
-  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-  view.webContents.loadURL(url);
+  const resolved = resolveInput(url);
+  if (!resolved) return;
+  view.webContents.loadURL(resolved);
 });
 
 ipcMain.on('go-back', () => {

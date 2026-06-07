@@ -20,10 +20,11 @@ Path: @/test
 - **Test server**: A minimal `http.createServer` spun up in `beforeAll` on a random port, serving test HTML pages. Eliminates external network dependencies
 - **Electron launch**: `electron.launch()` with the app's `main.js`, custom env vars, waits for the renderer window and control socket to be ready
 - **Terminal interaction**: Tests use a TCP control socket (`connectControl()` / `sendAndWait()`) to send commands and wait for marker strings in terminal output. This is more reliable than UI-based xterm interaction
-- **Three test suites**: The tests are split into `test.describe` blocks, each with its own Electron app instance:
+- **Test suites**: The tests are split into `test.describe` blocks, each with its own Electron app instance and port offsets to avoid collisions:
   - `Nori Browser` -- core functionality: window elements, terminal I/O, URL navigation, CDP connectivity, env vars, bridge CLI commands, session directory lifecycle
   - `Nori Browser Tabs` -- tab management: tab bar rendering, creating/closing/switching tabs, navigation isolation, keyboard accelerators, tab reordering, bridge CLI `list-tabs`, reopen closed tab, middle-click close, duplicate tab, close other/right tabs, tab pinning (rendering, ordering invariant, boundary-clamped reordering, interaction with close-other/close-right, duplicate-of-pinned), and closing the last tab to close the window
   - `Nori Browser Tab Favicons & Loading` -- favicon display from test server pages, favicon updates on navigation, loading spinner visibility during page loads, getTabs API returning favicon fields, and pinned tab favicon display
+  - `Nori Browser Search` -- omnibox URL-vs-search classification: single-word and multi-word Google searches, explicit URL passthrough, bare IP navigation, special character encoding in searches, and localhost detection
 - **Bridge CLI tests**: Verify the real agent workflow -- send bridge commands via the control socket or `execSync`, wait for status markers (e.g., `NAVIGATE_OK`, `LIST_TABS_OK`), and cross-check browser state
 - **Session directory tests**: Verify `NORI_SESSION_DIR` env var is set, `system-prompt.txt` exists with correct CDP port and bridge path, and that the session directory is removed when the app closes
 
