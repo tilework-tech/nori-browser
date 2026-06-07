@@ -17,6 +17,7 @@ Path: @/
 | Env Var | Purpose |
 |---|---|
 | `NORI_BROWSER_CDP_PORT` | Port Electron exposes for Chrome DevTools Protocol |
+| `NORI_BROWSER_HEADLESS` | When set, the BrowserWindow is created with `show: false` (no visible window). Used by tests to prevent Electron windows from appearing on screen |
 | `PLAYWRIGHT_CDP_URL` | Full CDP URL (`http://localhost:<port>`) |
 | `NODE_PATH` | Points to project `node_modules` so `require('playwright')` resolves from any cwd |
 | `NORI_BROWSER_DIR` | Project root, so agent can locate `playwright-bridge.js` |
@@ -64,7 +65,7 @@ Agent types in terminal
 
 - The bridge CLI finds the correct page by filtering out `file://` URLs (the renderer's `index.html`) and picking the first `http`-prefixed page. If no HTTP page exists, it falls back to `pages[0]`
 - `playwright` is a runtime dependency (not dev-only) because the bridge CLI needs it when invoked from the terminal
-- The CDP port defaults to `19222` but is configurable via `NORI_BROWSER_CDP_PORT`. Tests use offset ports (`19223`, `19233`, etc.) to avoid collisions
+- The CDP port defaults to `19222` but is configurable via `NORI_BROWSER_CDP_PORT`. Each test suite uses a distinct port offset (e.g., `19223`, `19233`, `19243`, etc.) to avoid collisions with each other and with a running dev instance
 - URL bar input goes through `resolveInput()` in `main.js`, which classifies text as either a URL or a search query. URLs (detected by explicit scheme, dots, IP addresses, `localhost`, or port patterns) get navigated directly with an appropriate protocol prefix. Everything else becomes a Google search via `https://www.google.com/search?q=<encoded_query>`. The classification uses a priority-ordered heuristic chain -- whitespace triggers search early, dots trigger URL treatment, and single words without dots fall through to search. Google is hardcoded as the search engine
 - The `resolveShell()` function uses synchronous `execSync('which ...')` calls at startup -- if `claude` is missing, it falls back silently to the default shell. The function takes a `sessionDir` parameter so it can reference the session prompt file when constructing Claude Code args
 - On Linux, the `maximize` and `unmaximize` window events fire before the window manager has updated `mainWindow.getContentSize()`. A single bounds update call reads stale dimensions. The workaround is a deferred second call via `setTimeout(fn, 100)` that runs after the WM has settled. The `resize` event (manual drag) does not need this because the WM updates dimensions synchronously for drag operations

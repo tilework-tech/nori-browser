@@ -39,6 +39,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
+    show: !process.env.NORI_BROWSER_HEADLESS,
     title: 'Nori Browser',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
