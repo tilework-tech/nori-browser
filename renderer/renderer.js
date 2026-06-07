@@ -61,6 +61,8 @@ let omnibarResults = [];
 function hideOmnibar() {
   omnibarResults = [];
   omnibarSelectedIndex = -1;
+  omnibarDropdown.innerHTML = '';
+  omnibarDropdown.classList.remove('visible');
   window.api.omnibarVisibility(false);
   window.api.showOmnibarPopup([]);
 }
@@ -72,9 +74,26 @@ function renderOmnibar(results) {
     return;
   }
   omnibarResults = results;
+  omnibarDropdown.innerHTML = results.map((r, i) => `
+    <div class="omnibar-item" data-url="${r.url.replace(/"/g, '&quot;')}" data-index="${i}">
+      ${r.source === 'bookmark' ? '<span class="omnibar-bookmark-star">★</span>' : ''}
+      <span class="omnibar-title">${(r.title || r.url).replace(/</g, '&lt;')}</span>
+      <span class="omnibar-url">${r.url.replace(/</g, '&lt;')}</span>
+    </div>
+  `).join('');
+  omnibarDropdown.classList.add('visible');
   window.api.omnibarVisibility(true);
   window.api.showOmnibarPopup(results);
 }
+
+omnibarDropdown.addEventListener('mousedown', (e) => {
+  const item = e.target.closest('.omnibar-item');
+  if (item && item.dataset.url) {
+    e.preventDefault();
+    window.api.navigate(item.dataset.url);
+    hideOmnibar();
+  }
+});
 
 urlBar.addEventListener('input', () => {
   clearTimeout(omnibarDebounceTimer);

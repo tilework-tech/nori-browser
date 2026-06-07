@@ -28,7 +28,7 @@ Path: @/test
   - `Nori Browser Search` -- omnibox URL-vs-search classification
   - `Nori Browser Chrome Features` -- Chrome-like browser features: context menu, DevTools, find-in-page, zoom, downloads, print, fullscreen, status bar, permissions
   - `Nori Browser Chrome Profile` -- verifies that `NORI_BROWSER_PROFILE_DIR` causes the app to store data in the specified directory
-  - `Nori Browser Omnibar` -- creates a temp profile dir with a synthetic History SQLite database and Bookmarks JSON file, then tests: suggestions from history, bookmark star indicators, click-to-navigate, keyboard selection (ArrowDown + Enter), Escape to close, and ranking by visit frequency
+  - `Nori Browser Omnibar` -- creates a temp profile dir with a synthetic History SQLite database and Bookmarks JSON file, then tests: suggestions from history, bookmark star indicators, click-to-navigate, keyboard selection (ArrowDown + Enter), Escape to close, ranking by visit frequency, and prefix matching that strips common subdomain prefixes (e.g., `www.`) before comparing
   - `Nori Browser Omnibar No Data` -- verifies the omnibar gracefully handles an empty profile (no History or Bookmarks files) without crashing
 - **Bridge CLI tests**: Verify the real agent workflow -- send bridge commands via the control socket or `execSync`, wait for status markers (e.g., `NAVIGATE_OK`, `LIST_TABS_OK`), and cross-check browser state
 - **Session directory tests**: Verify `NORI_SESSION_DIR` env var is set, `system-prompt.txt` exists with correct CDP port and bridge path, system prompt contains network etiquette instructions (random delays, exponential backoff, robots.txt), and that the session directory is removed when the app closes

@@ -2222,11 +2222,12 @@ test.describe('Nori Browser Omnibar', () => {
         last_visit_time INTEGER NOT NULL DEFAULT 0
       );
       INSERT INTO urls (url, title, visit_count, typed_count, last_visit_time) VALUES
-        ('https://www.messenger.com/', 'Messenger', 50, 10, 13350000000000000),
+        ('https://www.messenger.com/', 'Facebook Chat', 50, 10, 13350000000000000),
         ('https://mail.google.com/mail/', 'Gmail - Inbox', 100, 20, 13350000000000000),
         ('https://github.com/tilework-tech/nori', 'GitHub - nori', 30, 5, 13340000000000000),
         ('https://medium.com/@testuser/article', 'Medium Article', 2, 0, 13330000000000000),
-        ('https://meet.google.com/', 'Google Meet', 15, 3, 13340000000000000);
+        ('https://meet.google.com/', 'Google Meet', 15, 3, 13340000000000000),
+        ('https://example.com/james-portfolio', 'James Portfolio', 55, 11, 13350000000000000);
     "`);
 
     const bookmarks = {
@@ -2402,6 +2403,28 @@ test.describe('Nori Browser Omnibar', () => {
     expect(meetIdx).not.toBe(-1);
     expect(messengerIdx).not.toBe(-1);
     expect(messengerIdx).toBeLessThan(meetIdx);
+  });
+
+  test('domain prefix match through www ranks above higher-visited non-domain match', async () => {
+    const urlBar = await window.$('#url-bar');
+    await window.keyboard.press('Escape');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill('mes');
+    await expect.poll(async () => {
+      const urls = await window.$$eval('#omnibar-dropdown .omnibar-item', els =>
+        els.map(el => el.dataset.url)
+      );
+      return urls.some(u => u && u.includes('messenger.com')) &&
+             urls.some(u => u && u.includes('james-portfolio'));
+    }, { timeout: 10000 }).toBe(true);
+
+    const urls = await window.$$eval('#omnibar-dropdown .omnibar-item', els =>
+      els.map(el => el.dataset.url)
+    );
+    const messengerIdx = urls.findIndex(u => u.includes('messenger.com'));
+    const jamesIdx = urls.findIndex(u => u.includes('james-portfolio'));
+    expect(messengerIdx).toBe(0);
+    expect(jamesIdx).toBeGreaterThan(messengerIdx);
   });
 });
 

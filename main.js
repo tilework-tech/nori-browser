@@ -972,11 +972,24 @@ ipcMain.handle('get-tabs', () => {
   };
 });
 
+function stripDomainPrefix(url) {
+  const domainStart = url.indexOf('://') + 3;
+  let domain = domainStart > 2 ? url.slice(domainStart) : url;
+  for (const prefix of ['www.', 'm.', 'mobile.']) {
+    if (domain.startsWith(prefix)) return domain.slice(prefix.length);
+  }
+  return domain;
+}
+
 function searchBookmarks(node, query, results) {
   if (!node) return;
   if (node.type === 'url' && node.url) {
     if ((node.name || '').toLowerCase().includes(query) || node.url.toLowerCase().includes(query)) {
-      results.push({ url: node.url, title: node.name || '', source: 'bookmark' });
+      const domain = stripDomainPrefix(node.url.toLowerCase());
+      const titleLower = (node.name || '').toLowerCase();
+      const prefixBoost = domain.startsWith(query) || titleLower.startsWith(query) ? 10 : 0;
+      const score = prefixBoost + 20;
+      results.push({ url: node.url, title: node.name || '', source: 'bookmark', score });
     }
   }
   if (node.children) {
@@ -1101,8 +1114,7 @@ ipcMain.handle('omnibar-query', (_, query) => {
       if (!seenUrls.has(row.url)) {
         const urlLower = row.url.toLowerCase();
         const titleLower = (row.title || '').toLowerCase();
-        const domainStart = urlLower.indexOf('://') + 3;
-        const domain = urlLower.slice(domainStart);
+        const domain = stripDomainPrefix(urlLower);
         const prefixBoost = domain.startsWith(lowerQuery) || titleLower.startsWith(lowerQuery) ? 10 : 0;
         const ageHours = Math.max(1, (now - row.last_visit_time) / 3600000000);
         const recencyScore = Math.max(0, 10 - Math.log2(ageHours / 24));
