@@ -4,10 +4,68 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const pty = require('node-pty');
+const Database = require('better-sqlite3');
 
 const CDP_PORT = parseInt(process.env.NORI_BROWSER_CDP_PORT || '19222');
 const CONTROL_PORT = parseInt(process.env.NORI_BROWSER_CONTROL_PORT || '0');
 app.commandLine.appendSwitch('remote-debugging-port', String(CDP_PORT));
+
+function getChromeUserDataDir() {
+  switch (process.platform) {
+    case 'win32':
+      return path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'User Data');
+    case 'darwin':
+      return path.join(os.homedir(), 'Library', 'Application Support', 'Google', 'Chrome');
+    case 'linux':
+      return path.join(os.homedir(), '.config', 'google-chrome');
+    default:
+      return null;
+  }
+}
+
+function isChromeRunning(userDataDir) {
+  const lockPath = path.join(userDataDir, 'SingletonLock');
+  try {
+    const target = fs.readlinkSync(lockPath);
+    const pid = parseInt(target.split('-').pop(), 10);
+    if (!isNaN(pid)) {
+      process.kill(pid, 0);
+      return true;
+    }
+  } catch {}
+  return false;
+}
+
+function resolveProfileDir() {
+  const envDir = process.env.NORI_BROWSER_PROFILE_DIR;
+  if (envDir !== undefined) {
+    if (!envDir) return null;
+    fs.mkdirSync(envDir, { recursive: true });
+    return envDir;
+  }
+  const chromeDir = getChromeUserDataDir();
+  if (!chromeDir || !fs.existsSync(chromeDir)) return null;
+  if (isChromeRunning(chromeDir)) {
+    process.stderr.write('nori-browser: Chrome is running, using default profile instead\n');
+    return null;
+  }
+  return chromeDir;
+}
+
+const profileDir = resolveProfileDir();
+let cachedHistoryPath = null;
+if (profileDir) {
+  const histSrc = path.join(profileDir, 'Default', 'History');
+  if (fs.existsSync(histSrc)) {
+    cachedHistoryPath = path.join(os.tmpdir(), `nori-history-${process.pid}.db`);
+    try {
+      fs.copyFileSync(histSrc, cachedHistoryPath);
+      const walSrc = histSrc + '-wal';
+      if (fs.existsSync(walSrc)) fs.copyFileSync(walSrc, cachedHistoryPath + '-wal');
+    } catch {}
+  }
+  app.setPath('userData', profileDir);
+}
 
 let mainWindow;
 let ptyProcess;
@@ -912,6 +970,62 @@ ipcMain.handle('get-tabs', () => {
   };
 });
 
+function searchBookmarks(node, query, results) {
+  if (!node) return;
+  if (node.type === 'url' && node.url) {
+    if ((node.name || '').toLowerCase().includes(query) || node.url.toLowerCase().includes(query)) {
+      results.push({ url: node.url, title: node.name || '', source: 'bookmark' });
+    }
+  }
+  if (node.children) {
+    for (const child of node.children) {
+      searchBookmarks(child, query, results);
+    }
+  }
+}
+
+ipcMain.handle('omnibar-query', (_, query) => {
+  if (!query || query.length < 1) return [];
+  const lowerQuery = query.toLowerCase();
+  const userData = app.getPath('userData');
+  const defaultProfile = path.join(userData, 'Default');
+  const results = [];
+  const seenUrls = new Set();
+
+  const bookmarksPath = path.join(defaultProfile, 'Bookmarks');
+  try {
+    const bookmarksData = JSON.parse(fs.readFileSync(bookmarksPath, 'utf-8'));
+    const roots = bookmarksData.roots || {};
+    for (const key of Object.keys(roots)) {
+      searchBookmarks(roots[key], lowerQuery, results);
+    }
+  } catch {}
+
+  for (const r of results) seenUrls.add(r.url);
+
+  const historyPath = cachedHistoryPath || path.join(defaultProfile, 'History');
+  try {
+    const db = new Database(historyPath, { readonly: true, fileMustExist: true });
+    const rows = db.prepare(`
+      SELECT url, title, visit_count, typed_count, last_visit_time
+      FROM urls
+      WHERE url LIKE '%' || ? || '%' OR title LIKE '%' || ? || '%'
+      ORDER BY typed_count DESC, visit_count DESC, last_visit_time DESC
+      LIMIT 10
+    `).all(lowerQuery, lowerQuery);
+    db.close();
+
+    for (const row of rows) {
+      if (!seenUrls.has(row.url)) {
+        results.push({ url: row.url, title: row.title, source: 'history' });
+        seenUrls.add(row.url);
+      }
+    }
+  } catch {}
+
+  return results.slice(0, 8);
+});
+
 // Find in page
 ipcMain.on('find-in-page', (_, text) => {
   const view = getActiveView();
@@ -960,5 +1074,9 @@ app.on('window-all-closed', () => {
   if (controlServer) controlServer.close();
   for (const socket of controlSockets) socket.destroy();
   cleanupSessionDir();
+  if (cachedHistoryPath) {
+    try { fs.unlinkSync(cachedHistoryPath); } catch {}
+    try { fs.unlinkSync(cachedHistoryPath + '-wal'); } catch {}
+  }
   app.quit();
 });

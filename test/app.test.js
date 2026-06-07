@@ -70,6 +70,7 @@ test.describe('Nori Browser', () => {
         NORI_BROWSER_CDP_PORT: String(CDP_PORT),
         NORI_BROWSER_CONTROL_PORT: String(CONTROL_PORT),
         NORI_BROWSER_HEADLESS: '1',
+        NORI_BROWSER_PROFILE_DIR: '',
       },
     });
 
@@ -446,6 +447,7 @@ test.describe('Nori Browser Tabs', () => {
         NORI_BROWSER_CDP_PORT: String(CDP_PORT + 10),
         NORI_BROWSER_CONTROL_PORT: String(CONTROL_PORT + 10),
         NORI_BROWSER_HEADLESS: '1',
+        NORI_BROWSER_PROFILE_DIR: '',
       },
     });
 
@@ -899,6 +901,7 @@ test.describe('Nori Browser Tab Pinning', () => {
         NORI_BROWSER_CDP_PORT: String(CDP_PORT + 20),
         NORI_BROWSER_CONTROL_PORT: String(CONTROL_PORT + 20),
         NORI_BROWSER_HEADLESS: '1',
+        NORI_BROWSER_PROFILE_DIR: '',
       },
     });
 
@@ -1428,6 +1431,7 @@ test.describe('Nori Browser Tab Favicons & Loading', () => {
         NORI_BROWSER_CDP_PORT: String(CDP_PORT + 30),
         NORI_BROWSER_CONTROL_PORT: String(CONTROL_PORT + 30),
         NORI_BROWSER_HEADLESS: '1',
+        NORI_BROWSER_PROFILE_DIR: '',
       },
     });
 
@@ -1598,6 +1602,7 @@ test.describe('Nori Browser Search', () => {
         NORI_BROWSER_CDP_PORT: String(CDP_PORT + 40),
         NORI_BROWSER_CONTROL_PORT: String(CONTROL_PORT + 40),
         NORI_BROWSER_HEADLESS: '1',
+        NORI_BROWSER_PROFILE_DIR: '',
       },
     });
 
@@ -1750,6 +1755,8 @@ test.describe('Nori Browser Chrome Features', () => {
         NORI_BROWSER_SHELL: '/bin/bash',
         NORI_BROWSER_CDP_PORT: String(CDP_PORT + 50),
         NORI_BROWSER_CONTROL_PORT: String(CONTROL_PORT + 50),
+        NORI_BROWSER_HEADLESS: '1',
+        NORI_BROWSER_PROFILE_DIR: '',
       },
     });
 
@@ -2138,5 +2145,326 @@ test.describe('Nori Browser Chrome Features', () => {
       return null;
     });
     expect(denied).toBe('denied');
+  });
+});
+
+test.describe('Nori Browser Chrome Profile', () => {
+  let electronApp;
+  let window;
+  let profileDir;
+
+  test.beforeAll(async () => {
+    profileDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'nori-profile-test-'));
+
+    electronApp = await electron.launch({
+      args: [path.join(APP_PATH, 'main.js')],
+      env: {
+        ...process.env,
+        NORI_BROWSER_SHELL: '/bin/bash',
+        NORI_BROWSER_CDP_PORT: String(CDP_PORT + 60),
+        NORI_BROWSER_CONTROL_PORT: String(CONTROL_PORT + 60),
+        NORI_BROWSER_HEADLESS: '1',
+        NORI_BROWSER_PROFILE_DIR: profileDir,
+      },
+    });
+
+    await electronApp.firstWindow();
+    for (let i = 0; i < 30; i++) {
+      const windows = electronApp.windows();
+      const renderer = windows.find((w) => w.url().includes('index.html'));
+      if (renderer) {
+        window = renderer;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
+    await window.waitForSelector('#tab-bar', { timeout: 10000 });
+  });
+
+  test.afterAll(async () => {
+    if (electronApp) {
+      await electronApp.close();
+      electronApp = null;
+    }
+    if (profileDir) {
+      fs.rmSync(profileDir, { recursive: true, force: true });
+    }
+  });
+
+  test('app stores browser data in the specified profile directory', async () => {
+    const entries = fs.readdirSync(profileDir);
+    expect(entries.length).toBeGreaterThan(0);
+  });
+});
+
+test.describe('Nori Browser Omnibar', () => {
+  let electronApp;
+  let window;
+  let profileDir;
+
+  test.beforeAll(async () => {
+    const { execSync } = require('child_process');
+    const os = require('os');
+
+    profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nori-omnibar-test-'));
+    const defaultDir = path.join(profileDir, 'Default');
+    fs.mkdirSync(defaultDir);
+
+    const historyPath = path.join(defaultDir, 'History');
+    execSync(`sqlite3 "${historyPath}" "
+      CREATE TABLE urls (
+        id INTEGER PRIMARY KEY,
+        url TEXT NOT NULL,
+        title TEXT NOT NULL DEFAULT '',
+        visit_count INTEGER NOT NULL DEFAULT 0,
+        typed_count INTEGER NOT NULL DEFAULT 0,
+        last_visit_time INTEGER NOT NULL DEFAULT 0
+      );
+      INSERT INTO urls (url, title, visit_count, typed_count, last_visit_time) VALUES
+        ('https://www.messenger.com/', 'Messenger', 50, 10, 13350000000000000),
+        ('https://mail.google.com/mail/', 'Gmail - Inbox', 100, 20, 13350000000000000),
+        ('https://github.com/tilework-tech/nori', 'GitHub - nori', 30, 5, 13340000000000000),
+        ('https://medium.com/@testuser/article', 'Medium Article', 2, 0, 13330000000000000),
+        ('https://meet.google.com/', 'Google Meet', 15, 3, 13340000000000000);
+    "`);
+
+    const bookmarks = {
+      roots: {
+        bookmark_bar: {
+          children: [
+            { type: 'url', name: 'MDN Web Docs', url: 'https://developer.mozilla.org/' },
+            { type: 'url', name: 'Medium Blog', url: 'https://medium.com/' },
+          ],
+        },
+        other: { children: [] },
+        synced: { children: [] },
+      },
+    };
+    fs.writeFileSync(path.join(defaultDir, 'Bookmarks'), JSON.stringify(bookmarks));
+
+    electronApp = await electron.launch({
+      args: [path.join(APP_PATH, 'main.js')],
+      env: {
+        ...process.env,
+        NORI_BROWSER_SHELL: '/bin/bash',
+        NORI_BROWSER_CDP_PORT: String(CDP_PORT + 70),
+        NORI_BROWSER_CONTROL_PORT: String(CONTROL_PORT + 70),
+        NORI_BROWSER_HEADLESS: '1',
+        NORI_BROWSER_PROFILE_DIR: profileDir,
+      },
+    });
+
+    await electronApp.firstWindow();
+    for (let i = 0; i < 30; i++) {
+      const windows = electronApp.windows();
+      const renderer = windows.find((w) => w.url().includes('index.html'));
+      if (renderer) {
+        window = renderer;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
+    await window.waitForSelector('#tab-bar', { timeout: 10000 });
+  });
+
+  test.afterAll(async () => {
+    if (electronApp) {
+      await electronApp.close();
+      electronApp = null;
+    }
+    if (profileDir) {
+      fs.rmSync(profileDir, { recursive: true, force: true });
+    }
+  });
+
+  test('typing in url bar shows omnibar suggestions from history', async () => {
+    const urlBar = await window.$('#url-bar');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill('me');
+    await expect.poll(async () => {
+      const dropdown = await window.$('#omnibar-dropdown');
+      if (!dropdown) return false;
+      const visible = await dropdown.isVisible();
+      if (!visible) return false;
+      const items = await window.$$('#omnibar-dropdown .omnibar-item');
+      return items.length > 0;
+    }, { timeout: 10000 }).toBe(true);
+
+    const items = await window.$$eval('#omnibar-dropdown .omnibar-item', els =>
+      els.map(el => ({
+        url: el.dataset.url,
+        title: el.querySelector('.omnibar-title')?.textContent,
+      }))
+    );
+    const urls = items.map(i => i.url);
+    expect(urls.some(u => u.includes('messenger.com'))).toBe(true);
+  });
+
+  test('typing in url bar shows bookmark results with star indicator', async () => {
+    const urlBar = await window.$('#url-bar');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill('mdn');
+    await expect.poll(async () => {
+      const items = await window.$$('#omnibar-dropdown .omnibar-item');
+      return items.length > 0;
+    }, { timeout: 10000 }).toBe(true);
+
+    const texts = await window.$$eval('#omnibar-dropdown .omnibar-item', els =>
+      els.map(el => el.textContent)
+    );
+    expect(texts.some(t => t.includes('★'))).toBe(true);
+  });
+
+  test('clicking an omnibar suggestion navigates to that URL', async () => {
+    const urlBar = await window.$('#url-bar');
+    await window.keyboard.press('Escape');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill('gmail');
+    await expect.poll(async () => {
+      const urls = await window.$$eval('#omnibar-dropdown .omnibar-item', els =>
+        els.map(el => el.dataset.url)
+      );
+      return urls.some(u => u.includes('mail.google.com'));
+    }, { timeout: 10000 }).toBe(true);
+
+    const idx = await window.$$eval('#omnibar-dropdown .omnibar-item', els =>
+      els.findIndex(el => el.dataset.url && el.dataset.url.includes('mail.google.com'))
+    );
+    const items = await window.$$('#omnibar-dropdown .omnibar-item');
+    await items[idx].click();
+
+    await expect.poll(async () => {
+      const val = await urlBar.inputValue();
+      return val.includes('mail.google.com');
+    }, { timeout: 15000 }).toBe(true);
+  });
+
+  test('pressing down arrow and enter selects an omnibar suggestion', async () => {
+    const urlBar = await window.$('#url-bar');
+    await window.keyboard.press('Escape');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill('github');
+    await expect.poll(async () => {
+      const urls = await window.$$eval('#omnibar-dropdown .omnibar-item', els =>
+        els.map(el => el.dataset.url)
+      );
+      return urls.some(u => u && u.includes('github.com'));
+    }, { timeout: 10000 }).toBe(true);
+
+    await window.keyboard.press('ArrowDown');
+    await window.keyboard.press('Enter');
+
+    await expect.poll(async () => {
+      const val = await urlBar.inputValue();
+      return val.includes('github.com');
+    }, { timeout: 15000 }).toBe(true);
+  });
+
+  test('escape closes the omnibar dropdown', async () => {
+    const urlBar = await window.$('#url-bar');
+    await window.keyboard.press('Escape');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill('meet');
+    await expect.poll(async () => {
+      const urls = await window.$$eval('#omnibar-dropdown .omnibar-item', els =>
+        els.map(el => el.dataset.url)
+      );
+      return urls.some(u => u && u.includes('meet.google.com'));
+    }, { timeout: 10000 }).toBe(true);
+
+    await window.keyboard.press('Escape');
+
+    const dropdown = await window.$('#omnibar-dropdown');
+    const visible = dropdown ? await dropdown.isVisible() : false;
+    expect(visible).toBe(false);
+  });
+
+  test('omnibar results are ranked with most visited first', async () => {
+    const urlBar = await window.$('#url-bar');
+    await window.keyboard.press('Escape');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill('me');
+    await expect.poll(async () => {
+      const urls = await window.$$eval('#omnibar-dropdown .omnibar-item', els =>
+        els.map(el => el.dataset.url)
+      );
+      return urls.some(u => u && u.includes('messenger.com')) &&
+             urls.some(u => u && u.includes('meet.google.com'));
+    }, { timeout: 10000 }).toBe(true);
+
+    const urls = await window.$$eval('#omnibar-dropdown .omnibar-item', els =>
+      els.map(el => el.dataset.url)
+    );
+    const meetIdx = urls.findIndex(u => u.includes('meet.google.com'));
+    const messengerIdx = urls.findIndex(u => u.includes('messenger.com'));
+    expect(meetIdx).not.toBe(-1);
+    expect(messengerIdx).not.toBe(-1);
+    expect(messengerIdx).toBeLessThan(meetIdx);
+  });
+});
+
+test.describe('Nori Browser Omnibar No Data', () => {
+  let electronApp;
+  let window;
+  let profileDir;
+
+  test.beforeAll(async () => {
+    profileDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'nori-omnibar-empty-'));
+
+    electronApp = await electron.launch({
+      args: [path.join(APP_PATH, 'main.js')],
+      env: {
+        ...process.env,
+        NORI_BROWSER_SHELL: '/bin/bash',
+        NORI_BROWSER_CDP_PORT: String(CDP_PORT + 80),
+        NORI_BROWSER_CONTROL_PORT: String(CONTROL_PORT + 80),
+        NORI_BROWSER_HEADLESS: '1',
+        NORI_BROWSER_PROFILE_DIR: profileDir,
+      },
+    });
+
+    await electronApp.firstWindow();
+    for (let i = 0; i < 30; i++) {
+      const windows = electronApp.windows();
+      const renderer = windows.find((w) => w.url().includes('index.html'));
+      if (renderer) {
+        window = renderer;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
+    await window.waitForSelector('#tab-bar', { timeout: 10000 });
+  });
+
+  test.afterAll(async () => {
+    if (electronApp) {
+      await electronApp.close();
+      electronApp = null;
+    }
+    if (profileDir) {
+      fs.rmSync(profileDir, { recursive: true, force: true });
+    }
+  });
+
+  test('typing in url bar with no history or bookmarks does not crash and shows no dropdown', async () => {
+    const urlBar = await window.$('#url-bar');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill('test query');
+    await new Promise((r) => setTimeout(r, 500));
+
+    const dropdown = await window.$('#omnibar-dropdown');
+    const visible = dropdown ? await dropdown.isVisible() : false;
+    expect(visible).toBe(false);
+
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill('http://example.com');
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => {
+      const val = await urlBar.inputValue();
+      return val.includes('example.com');
+    }, { timeout: 15000 }).toBe(true);
   });
 });

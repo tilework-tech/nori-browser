@@ -110,8 +110,14 @@ html, body {
   background: #666;
 }
 
-#url-bar {
+#url-bar-wrapper {
   flex: 1;
+  position: relative;
+  min-width: 0;
+}
+
+#url-bar {
+  width: 100%;
   padding: 6px 14px;
   border: 1px solid #555;
   border-radius: 20px;
@@ -126,6 +132,63 @@ html, body {
 #url-bar:focus {
   border-color: #007acc;
   background: #1e1e1e;
+}
+
+#omnibar-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  background: #2d2d2d;
+  border: 1px solid #555;
+  border-radius: 8px;
+  overflow: hidden;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+#omnibar-dropdown.visible {
+  display: block;
+}
+
+.omnibar-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.omnibar-item:hover,
+.omnibar-item.selected {
+  background: #094771;
+}
+
+.omnibar-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #d4d4d4;
+}
+
+.omnibar-url {
+  flex-shrink: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #888;
+  font-size: 12px;
+  max-width: 50%;
+}
+
+.omnibar-bookmark-star {
+  color: #e8a100;
+  flex-shrink: 0;
+  font-size: 14px;
 }
 
 #tab-bar {

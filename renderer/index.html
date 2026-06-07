@@ -22,7 +22,10 @@
         <button id="btn-back" title="Back">&#8592;</button>
         <button id="btn-forward" title="Forward">&#8594;</button>
         <button id="btn-reload" title="Reload">&#8635;</button>
-        <input id="url-bar" type="text" value="" spellcheck="false" placeholder="Search Google or enter URL">
+        <div id="url-bar-wrapper">
+          <input id="url-bar" type="text" value="" spellcheck="false" placeholder="Search Google or enter URL" autocomplete="off">
+          <div id="omnibar-dropdown"></div>
+        </div>
       </div>
       <div id="tab-bar">
         <div id="tab-list"></div>
