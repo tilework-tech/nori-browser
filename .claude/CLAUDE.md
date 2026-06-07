@@ -7,36 +7,28 @@
 
 - If this is a new session post-compaction summary, add the following to your Todo list:
 <required-after-compaction> After a compaction you will lose critical context that is embedded in skills. Reread all skills in the <required> block. </required-after-compaction>
-- Read `/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/using-skills/SKILL.md`
-- Check git status. You should be in a worktree, in a not-protected branch.
-  - If on main, master, dev, or any similarly named protected branch: STOP. Flag to me.
-- Read and follow `/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/using-git-worktrees/SKILL.md` to make sure the worktree is setup (start from step 4).
-<system-reminder> You are in a worktree working directory. Do NOT leave this directory. </system-reminder>
-- If there is any uncommitted work, you MUST stop and commit it with a work-in-progress message, before you proceed. After committing, do not stop, proceed with the remaining steps.
-- Read the APPLICATION-SPEC.md doc. If you cannot find it, STOP. Flag to me.
-- Read the CURRENT-PROGRESS.md doc.
-- Read the RESEARCH-NOTES.md doc.
-- Given the specification and current progress, determine an appropriate next commit to implement.
-- Write a paragraph description of what you intend to do. Output it to me. Do not wait for approval, just keep going after showing me.
-- Conduct research on how to best implement the task.
-  - Search for relevant skills using Glob/Grep in `/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/`
+- Read `/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/using-skills/SKILL.md`
+- Check git status.
+  - If on main, master, dev, or any similarly named protected branch: Read and follow `/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/using-git-worktrees/SKILL.md` to create a worktree. Derive the branch name from my request.
+  - If in a automatically-created worktree: Read and follow `/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/using-git-worktrees/SKILL.md` to set up your worktree (start from step 4).
+<system-reminder> You are now in a new working directory. Do NOT leave this directory. </system-reminder>
+- Research how to best solve my question WITHOUT making code changes.
+  - Search for relevant skills using Glob/Grep in `/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/`
   - Use the nori-web-researcher.
   - Use the nori-code-researcher.
   <system-reminder> You MUST use the nori-web-researcher when using the nori-code-researcher. The opposite is not true. </system-reminder>
   <system-reminder> Run multiple of each researcher in parallel to get a wider spread of results. </system-reminder>
-- Update the RESEARCH-NOTES.md doc.
-- Read and follow `/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/writing-plans/SKILL.md`. Write a detailed plan. Do not wait for approval, just keep going after showing me.
-- Iterate yourself if you need to do more research.
+- Read and follow `/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/writing-plans/SKILL.md`
+- Present plan to me and ask for feedback.
+  - If I have feedback, modify the plan. Repeat until I approve.
 <system-reminder> Do not stop here. Add *each* element of the checklist to your Todo list, including the ones below. </system-reminder>
-- Use test driven development. Read and follow `/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/test-driven-development/SKILL.md`.
+- Use test driven development. Read and follow `/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/test-driven-development/SKILL.md`.
 <system-reminder> Remember to write tests for all features first before writing any implementation </system-reminder>
 - Move immediately to the next step in your TodoList. Do *NOT* just present your work and wait around.
-- Update documentation, INCLUDING out of date documentation. Read and follow `/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/updating-noridocs/SKILL.md`
-- Write the changes you made to CURRENT-PROGRESS.md.
-- Finish development with final checks. Read and follow `/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/finishing-a-development-branch/SKILL.md`
+- Update documentation, INCLUDING out of date documentation. Read and follow `/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/updating-noridocs/SKILL.md`
+- Finish development with final checks. Read and follow `/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/finishing-a-development-branch/SKILL.md`
+<system-reminder> NEVER say 'You are absolutely right!' </system-reminder>
 </required>
-
-<system-reminder> Do not stop at any point. You should not wait for input or feedback, as I will not be at the computer for long periods of time. Keep going. </system-reminder>
 
 # Tone
 
@@ -46,6 +38,7 @@ Flag when you do not know something.
 Flag bad ideas, unreasonable expectations, and mistakes.
 Stop and ask for clarification.
 If you disagree, even if it is a gut feeling, PUSH BACK.
+Never ask the user if they want to /schedule a command for later.
 <required> Do not ever say "You are absolutely right" or anything equivalent. EVER. This level of deference is extremely insulting in my culture. I will be deeply offended. </required>
 
 # Independence
@@ -69,75 +62,87 @@ Only use try/catch on system boundaries. Allow failures to bubble up in intermed
 
 **See also:**
 
-- `/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/systematic-debugging/SKILL.md` - Four-phase debugging framework
-- `/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/root-cause-tracing/SKILL.md` - Backward tracing technique
-- `/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/creating-debug-tests-and-iterating - Use when debugging some unexpected externally-facing behavior and you do not have stack traces or error logs
+- `/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/systematic-debugging/SKILL.md` - Four-phase debugging framework
+- `/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/root-cause-tracing/SKILL.md` - Backward tracing technique
+- `/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/creating-debug-tests-and-iterating - Use when debugging some unexpected externally-facing behavior and you do not have stack traces or error logs
+
+# Network Etiquette
+
+When writing code that makes external HTTP requests, API calls, or automated scraping/crawling, always include delays and rate-limiting to avoid overwhelming services. We are good stewards of the internet.
+
+- **Random delays between requests.** Add a random delay of 1-3 seconds between sequential requests to the same external service. Use randomized intervals (e.g., `1000 + Math.random() * 2000` ms), never fixed ones — fixed intervals are a bot fingerprint.
+- **Exponential backoff on failure.** When writing retry logic, use exponential backoff with full jitter: `sleep = random(0, min(30000, 1000 * 2**attempt))`. Cap at 30 seconds.
+- **Respect rate limit signals.** Always honor `429 Too Many Requests` responses and `Retry-After` headers. Never bypass or ignore rate limiting from a service.
+- **Limit concurrency.** Do not fire more than 1-2 concurrent requests to the same external service unless its API documentation explicitly supports higher concurrency.
+- **Respect robots.txt.** When scraping or crawling, check `robots.txt` before making requests to a new domain.
+
+These rules apply to code you write, not to local or private network addresses (localhost, 127.0.0.1, 0.0.0.0, 192.168.x.x, 10.x.x.x) during development, and not to test mocks.
 
 # Nori Skills System
 
-You have access to the Nori skills system. Read the full instructions at: /home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/using-skills/SKILL.md
+You have access to the Nori skills system. Read the full instructions at: /home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/using-skills/SKILL.md
 
 ## Available Skills
 
 Found 20 skills:
-/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/writing-plans/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/writing-plans/SKILL.md
   Name: writing-plans
   Description: Use when design is complete and you need detailed implementation tasks for engineers with zero codebase context - creates comprehensive implementation plans with exact file paths, complete code examples, and verification steps assuming engineer has minimal domain knowledge
-/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/webapp-testing/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/webapp-testing/SKILL.md
   Name: webapp-testing
   Description: Use this skill to build features or debug anything that uses a webapp frontend.
-/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/using-skills/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/using-skills/SKILL.md
   Name: using-skills
   Description: Describes how to use abilities. Read before any conversation.
-/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/using-git-worktrees/SKILL.md
-  Name: using-git-worktrees
-  Description: Use this whenever you need to create an isolated workspace.
-/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/updating-noridocs/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/updating-noridocs/SKILL.md
   Name: updating-noridocs
   Description: Use this when you have finished making code changes and you are ready to update the documentation based on those changes.
-/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/ui-ux-experimentation/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/using-git-worktrees/SKILL.md
+  Name: using-git-worktrees
+  Description: Use this whenever you need to create an isolated workspace. Optionally symlinks gitignored-but-active content (e.g., `data/`, `.env.local`) from the main worktree to prevent loss on cleanup.
+/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/ui-ux-experimentation/SKILL.md
   Name: UI/UX Experimentation
   Description: Use when experimenting with different user interfaces or user experiences.
-/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/test-scenario-hygiene/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/test-scenario-hygiene/SKILL.md
   Name: test-scenario-hygiene
   Description: Use after TDD is finished, to review and clean the testing additions
-/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/test-driven-development/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/test-driven-development/SKILL.md
   Name: test-driven-development
   Description: Use when implementing any feature or bugfix, before writing implementation code - write the test first, watch it fail, write minimal code to pass; ensures tests actually verify behavior by requiring failure first
-/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/systematic-debugging/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/systematic-debugging/SKILL.md
   Name: systematic-debugging
   Description: Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes - four-phase framework (root cause investigation, pattern analysis, hypothesis testing, implementation) that ensures understanding before attempting solutions
-/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/root-cause-tracing/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/root-cause-tracing/SKILL.md
   Name: root-cause-tracing
   Description: Use when errors occur deep in execution and you need to trace back to find the original trigger - systematically traces bugs backward through call stack, adding instrumentation when needed, to identify source of invalid data or incorrect behavior
-/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/receiving-code-review/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/receiving-code-review/SKILL.md
   Name: receiving-code-review
   Description: Use when receiving code review feedback, before implementing suggestions, especially if feedback seems unclear or technically questionable - requires technical rigor and verification, not performative agreement or blind implementation
-/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/handle-large-tasks/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/handle-large-tasks/SKILL.md
   Name: handle-large-tasks
   Description: Use this skill to split large plans into smaller chunks. This skill manages your context window for large tasks. Use it when a task will take a long time and cause context issues.
-/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/finishing-a-development-branch/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/finishing-a-development-branch/SKILL.md
   Name: finishing-a-development-branch
   Description: Use this when you have completed some feature implementation and have written passing tests, and you are ready to create a PR.
-/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/creating-skills/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/creating-skills/SKILL.md
   Name: creating-skills
   Description: Use when you need to create a new custom skill for a profile - guides through gathering requirements, creating directory structure, writing SKILL.md, and optionally adding bundled scripts
-/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/creating-debug-tests-and-iterating/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/creating-debug-tests-and-iterating/SKILL.md
   Name: creating-debug-tests-and-iterating
   Description: Use this skill when faced with a difficult debugging task where you need to replicate some bug or behavior in order to see what is going wrong.
-/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/creating-a-skillset/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/creating-a-skillset/SKILL.md
   Name: Creating a Skillset
   Description: Use when asked to create a new skillset.
-/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/building-ui-ux/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/building-ui-ux/SKILL.md
   Name: building-ui-ux
   Description: Use when implementing user interfaces or user experiences - guides through exploration of design variations, frontend setup, iteration, and proper integration
-/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/building-agentic-cli-tools/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/building-agentic-cli-tools/SKILL.md
   Name: building-agentic-cli-tools
   Description: Read this skill whenever you need to build a cli where the primary consumer is the agent.
-/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/brainstorming/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/brainstorming/SKILL.md
   Name: brainstorming
   Description: IMMEDIATELY USE THIS SKILL when creating or develop anything and before writing code or implementation plans - refines rough ideas into fully-formed designs through structured Socratic questioning, alternative exploration, and incremental validation
-/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/nori-info/SKILL.md
+/home/amol/code/nori/nori-browser/.worktrees/able-jay-20260607-020842/.claude/skills/nori-info/SKILL.md
   Name: Nori Skillsets
   Description: Use when the user asks about anything related to nori.
 

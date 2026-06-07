@@ -20,9 +20,10 @@ Path: @/test
 - **Test server**: A minimal `http.createServer` spun up in `beforeAll` on a random port, serving test HTML pages. Eliminates external network dependencies
 - **Electron launch**: `electron.launch()` with the app's `main.js`, custom env vars, waits for the renderer window and control socket to be ready
 - **Terminal interaction**: Tests use a TCP control socket (`connectControl()` / `sendAndWait()`) to send commands and wait for marker strings in terminal output. This is more reliable than UI-based xterm interaction
-- **Three test suites**: The tests are split into `test.describe` blocks, each with its own Electron app instance:
+- **Four test suites**: The tests are split into `test.describe` blocks, each with its own Electron app instance and distinct CDP/control port offsets to allow independent operation:
   - `Nori Browser` -- core functionality: window elements, terminal I/O, URL navigation, CDP connectivity, env vars, bridge CLI commands, session directory lifecycle
-  - `Nori Browser Tabs` -- tab management: tab bar rendering, creating/closing/switching tabs, navigation isolation, keyboard accelerators, tab reordering, bridge CLI `list-tabs`, reopen closed tab, middle-click close, duplicate tab, close other/right tabs, tab pinning (rendering, ordering invariant, boundary-clamped reordering, interaction with close-other/close-right, duplicate-of-pinned), and closing the last tab to close the window
+  - `Nori Browser Tabs` -- tab management: tab bar rendering, creating/closing/switching tabs, navigation isolation, keyboard accelerators, tab reordering, bridge CLI `list-tabs`, reopen closed tab, middle-click close, duplicate tab, close other/right tabs, and closing the last tab to close the window
+  - `Nori Browser Tab Pinning` -- pin/unpin rendering, ordering invariant (pinned always before unpinned), boundary-clamped reordering, interaction with close-other/close-right, duplicate-of-pinned
   - `Nori Browser Tab Favicons & Loading` -- favicon display from test server pages, favicon updates on navigation, loading spinner visibility during page loads, getTabs API returning favicon fields, and pinned tab favicon display
 - **Bridge CLI tests**: Verify the real agent workflow -- send bridge commands via the control socket or `execSync`, wait for status markers (e.g., `NAVIGATE_OK`, `LIST_TABS_OK`), and cross-check browser state
 - **Session directory tests**: Verify `NORI_SESSION_DIR` env var is set, `system-prompt.txt` exists with correct CDP port and bridge path, and that the session directory is removed when the app closes
@@ -30,7 +31,7 @@ Path: @/test
 ### Things to Know
 
 - Within each `test.describe` block, tests share one Electron app instance and test order matters -- later tests depend on browser/tab state from earlier tests
-- The `Nori Browser Tabs` suite uses its own port offsets (`CDP_PORT + 10`, `CONTROL_PORT + 10`) separate from the core suite to allow independent operation
+- Each suite uses distinct port offsets (e.g., `CDP_PORT + 10` for Tabs, `+ 20` for Pinning, `+ 30` for Favicons) to avoid collisions when suites run in parallel
 - The session cleanup test and the "closing the last tab closes the window" test both close the Electron app and must run last within their respective suites. The `afterAll` handlers guard against a null `electronApp`
 - Tab tests use `window.evaluate()` to click tab elements rather than direct Playwright selectors to avoid stale element handles after tab list re-renders
 - Menu accelerator tests (Ctrl+T, Ctrl+W, Ctrl+Shift+T) use `electronApp.evaluate(({ Menu }) => ...)` to invoke menu items from the main process rather than simulating keyboard shortcuts, because Electron menu accelerators are not reliably triggered by Playwright keypresses in CI
