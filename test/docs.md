@@ -25,7 +25,7 @@ Path: @/test
   - `Nori Browser Tabs` -- tab management: tab bar rendering, creating/closing/switching tabs, navigation isolation, keyboard accelerators, tab reordering, bridge CLI `list-tabs`, reopen closed tab, middle-click close, duplicate tab, close other/right tabs, tab pinning (rendering, ordering invariant, boundary-clamped reordering, interaction with close-other/close-right, duplicate-of-pinned), and closing the last tab to close the window
   - `Nori Browser Tab Favicons & Loading` -- favicon display from test server pages, favicon updates on navigation, loading spinner visibility during page loads, getTabs API returning favicon fields, and pinned tab favicon display
 - **Bridge CLI tests**: Verify the real agent workflow -- send bridge commands via the control socket or `execSync`, wait for status markers (e.g., `NAVIGATE_OK`, `LIST_TABS_OK`), and cross-check browser state
-- **Session directory tests**: Verify `NORI_SESSION_DIR` env var is set, `system-prompt.txt` exists with correct CDP port and bridge path, and that the session directory is removed when the app closes
+- **Session directory tests**: Verify `NORI_SESSION_DIR` env var is set, `system-prompt.txt` exists with correct CDP port and bridge path, system prompt contains network etiquette instructions (random delays, exponential backoff, robots.txt), and that the session directory is removed when the app closes
 
 ### Things to Know
 

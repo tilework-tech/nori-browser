@@ -240,6 +240,18 @@ test.describe('Nori Browser', () => {
     }
   });
 
+  test('system prompt contains network etiquette instructions', async () => {
+    const socket = await connectControl();
+    try {
+      const output = await sendAndWait(socket, 'cat "$NORI_SESSION_DIR/system-prompt.txt"\n', 'random delay', 5000);
+      expect(output).toContain('random delay');
+      expect(output).toContain('exponential backoff');
+      expect(output).toContain('robots.txt');
+    } finally {
+      socket.destroy();
+    }
+  });
+
   test('resizing window updates the rendered browser page dimensions', async () => {
     const urlBar = await window.$('#url-bar');
     await urlBar.click({ clickCount: 3 });
