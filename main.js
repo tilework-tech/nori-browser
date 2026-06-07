@@ -422,7 +422,16 @@ You can also use Playwright directly by connecting over CDP:
 
 Script the browser directly. Do not use MCP tools or Playwright tool calls.
 Do not create git worktrees or run git init.
+
+Network etiquette — be a good steward of the internet:
+- Add a random delay of 1-3 seconds between sequential requests to the same external service (e.g., 1000 + Math.random() * 2000 ms). Never use fixed intervals.
+- Use exponential backoff with jitter on retries: sleep = random(0, min(30000, 1000 * 2**attempt)). Cap at 30 seconds.
+- Always honor 429 Too Many Requests responses and Retry-After headers.
+- Limit concurrent requests to the same external service to 1-2 at a time.
+- Check robots.txt before scraping or crawling a new domain.
+These rules do not apply to localhost or private network addresses.
 `;
+
   fs.writeFileSync(path.join(dir, 'system-prompt.txt'), prompt);
   return dir;
 }
