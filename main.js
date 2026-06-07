@@ -1,4 +1,4 @@
-const { app, BrowserWindow, WebContentsView, ipcMain, Menu } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, Menu, clipboard, dialog, session, shell } = require('electron');
 const net = require('net');
 const path = require('path');
 const fs = require('fs');
@@ -25,6 +25,11 @@ let activeTabId = null;
 let nextTabId = 1;
 const MAX_CLOSED_TABS = 25;
 let closedTabStack = [];
+
+const ZOOM_FACTORS = [0.25, 0.333, 0.5, 0.667, 0.75, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0, 5.0];
+let downloads = new Map();
+let nextDownloadId = 1;
+let lastFindText = '';
 
 app.whenReady().then(() => {
   createWindow();
@@ -64,7 +69,7 @@ function createWindow() {
   });
 
   function interceptToggleShortcut(event, input) {
-    if (input.control && input.key.toLowerCase() === 'j' && input.type === 'keyDown') {
+    if ((input.control || input.meta) && input.key.toLowerCase() === 'j' && input.type === 'keyDown') {
       event.preventDefault();
       handleToggleSidebar();
     }
@@ -78,6 +83,22 @@ function createWindow() {
         { label: 'New Tab', accelerator: 'CmdOrCtrl+T', click: () => createTab('about:blank') },
         { label: 'Close Tab', accelerator: 'CmdOrCtrl+W', click: () => { if (activeTabId !== null) closeTab(activeTabId); } },
         { label: 'Reopen Closed Tab', accelerator: 'CmdOrCtrl+Shift+T', click: () => reopenClosedTab() },
+        { type: 'separator' },
+        { label: 'Print', accelerator: 'CmdOrCtrl+P', click: () => { const v = getActiveView(); if (v) v.webContents.print(); } },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { label: 'Zoom In', accelerator: 'CmdOrCtrl+=', click: () => zoomIn() },
+        { label: 'Zoom Out', accelerator: 'CmdOrCtrl+-', click: () => zoomOut() },
+        { label: 'Reset Zoom', accelerator: 'CmdOrCtrl+0', click: () => resetZoom() },
+        { type: 'separator' },
+        { label: 'Find in Page', accelerator: 'CmdOrCtrl+F', click: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('show-find-bar'); } },
+        { type: 'separator' },
+        { label: 'Toggle Full Screen', accelerator: 'F11', click: () => mainWindow.setFullScreen(!mainWindow.isFullScreen()) },
+        { type: 'separator' },
+        { label: 'Toggle Developer Tools', accelerator: 'CmdOrCtrl+Shift+I', click: () => { const v = getActiveView(); if (v) v.webContents.toggleDevTools(); } },
       ],
     },
     {
@@ -99,6 +120,54 @@ function createWindow() {
   ]);
   Menu.setApplicationMenu(menu);
 
+  // Downloads
+  session.defaultSession.on('will-download', (event, item) => {
+    const id = String(nextDownloadId++);
+    downloads.set(id, item);
+
+    item.on('updated', (_, state) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('download-progress', {
+          id,
+          filename: item.getFilename(),
+          receivedBytes: item.getReceivedBytes(),
+          totalBytes: item.getTotalBytes(),
+          percentComplete: item.getPercentComplete(),
+          bytesPerSecond: item.getCurrentBytesPerSecond(),
+          state,
+          isPaused: item.isPaused(),
+        });
+      }
+    });
+
+    item.once('done', (_, state) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('download-done', {
+          id,
+          filename: item.getFilename(),
+          path: item.getSavePath(),
+          state,
+        });
+      }
+    });
+  });
+
+  // Permissions — deny by default, allow safe ones
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'fullscreen' || permission === 'clipboard-sanitized-write') {
+      callback(true);
+      return;
+    }
+    callback(false);
+  });
+
+  session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
+    if (permission === 'fullscreen' || permission === 'clipboard-sanitized-write') {
+      return true;
+    }
+    return false;
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
     if (ptyProcess) ptyProcess.kill();
@@ -117,7 +186,7 @@ function createTab(url, insertIndex) {
   mainWindow.contentView.addChildView(view);
   view.setVisible(false);
 
-  const tab = { id, view, title: 'New Tab', url: url || 'about:blank', pinned: false, favicon: '', isLoading: false };
+  const tab = { id, view, title: 'New Tab', url: url || 'about:blank', pinned: false, favicon: '', isLoading: false, isHtmlFullScreen: false };
   if (insertIndex !== undefined && insertIndex >= 0 && insertIndex <= tabs.length) {
     tabs.splice(insertIndex, 0, tab);
   } else {
@@ -171,9 +240,159 @@ function createTab(url, insertIndex) {
   });
 
   view.webContents.on('before-input-event', (event, input) => {
-    if (input.control && input.key.toLowerCase() === 'j' && input.type === 'keyDown') {
+    if (input.type !== 'keyDown') return;
+    const cmdOrCtrl = input.control || input.meta;
+    if (cmdOrCtrl && input.key.toLowerCase() === 'j') {
       event.preventDefault();
       handleToggleSidebar();
+    }
+    if (cmdOrCtrl && input.shift && input.key.toLowerCase() === 'i') {
+      event.preventDefault();
+      view.webContents.toggleDevTools();
+    }
+    if (input.key === 'F12') {
+      event.preventDefault();
+      view.webContents.toggleDevTools();
+    }
+    if (cmdOrCtrl && input.key.toLowerCase() === 'f') {
+      event.preventDefault();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('show-find-bar');
+      }
+    }
+    if (cmdOrCtrl && (input.key === '=' || input.key === '+')) {
+      event.preventDefault();
+      zoomIn();
+    }
+    if (cmdOrCtrl && input.key === '-') {
+      event.preventDefault();
+      zoomOut();
+    }
+    if (cmdOrCtrl && input.key === '0') {
+      event.preventDefault();
+      resetZoom();
+    }
+    if (input.key === 'F11') {
+      event.preventDefault();
+      mainWindow.setFullScreen(!mainWindow.isFullScreen());
+    }
+    if (cmdOrCtrl && input.key.toLowerCase() === 'p') {
+      event.preventDefault();
+      view.webContents.print();
+    }
+  });
+
+  view.webContents.on('context-menu', (event, params) => {
+    const menuTemplate = [];
+
+    if (params.linkURL) {
+      menuTemplate.push(
+        { label: 'Open Link in New Tab', click: () => createTab(params.linkURL) },
+        { label: 'Copy Link Address', click: () => clipboard.writeText(params.linkURL) },
+        { type: 'separator' }
+      );
+    }
+
+    if (params.mediaType === 'image') {
+      menuTemplate.push(
+        {
+          label: 'Save Image As...', click: async () => {
+            const result = await dialog.showSaveDialog(mainWindow, {
+              defaultPath: params.suggestedFilename || 'image.png',
+            });
+            if (!result.canceled && result.filePath) {
+              session.defaultSession.once('will-download', (_, item) => {
+                item.setSavePath(result.filePath);
+              });
+              session.defaultSession.downloadURL(params.srcURL);
+            }
+          }
+        },
+        { label: 'Copy Image', click: () => view.webContents.copyImageAt(params.x, params.y) },
+        { label: 'Copy Image Address', click: () => clipboard.writeText(params.srcURL) },
+        { type: 'separator' }
+      );
+    }
+
+    if (params.selectionText.trim()) {
+      menuTemplate.push(
+        { role: 'copy' },
+        {
+          label: `Search Google for "${params.selectionText.trim().substring(0, 30)}"`,
+          click: () => createTab(`https://www.google.com/search?q=${encodeURIComponent(params.selectionText)}`)
+        },
+        { type: 'separator' }
+      );
+    }
+
+    if (params.isEditable) {
+      menuTemplate.push(
+        { role: 'undo', enabled: params.editFlags.canUndo },
+        { role: 'redo', enabled: params.editFlags.canRedo },
+        { type: 'separator' },
+        { role: 'cut', enabled: params.editFlags.canCut },
+        { role: 'copy', enabled: params.editFlags.canCopy },
+        { role: 'paste', enabled: params.editFlags.canPaste },
+        { role: 'selectAll', enabled: params.editFlags.canSelectAll },
+        { type: 'separator' }
+      );
+    }
+
+    menuTemplate.push(
+      { label: 'Back', enabled: view.webContents.canGoBack(), click: () => view.webContents.goBack() },
+      { label: 'Forward', enabled: view.webContents.canGoForward(), click: () => view.webContents.goForward() },
+      { label: 'Reload', click: () => view.webContents.reload() },
+      { type: 'separator' },
+      { label: 'Inspect Element', click: () => view.webContents.inspectElement(params.x, params.y) }
+    );
+
+    const menu = Menu.buildFromTemplate(menuTemplate);
+    menu.popup();
+  });
+
+  view.webContents.on('found-in-page', (event, result) => {
+    if (result.finalUpdate && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('find-results', {
+        current: result.activeMatchOrdinal,
+        total: result.matches,
+      });
+    }
+  });
+
+  view.webContents.on('update-target-url', (event, url) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('status-bar-url', url);
+    }
+  });
+
+  view.webContents.on('enter-html-full-screen', () => {
+    tab.isHtmlFullScreen = true;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('fullscreen-changed', true);
+      const [width, height] = mainWindow.getContentSize();
+      view.setBounds({ x: 0, y: 0, width, height });
+    }
+  });
+
+  view.webContents.on('leave-html-full-screen', () => {
+    tab.isHtmlFullScreen = false;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('fullscreen-changed', false);
+      setTabBounds(view);
+    }
+  });
+
+  view.webContents.on('will-prevent-unload', (event) => {
+    const choice = dialog.showMessageBoxSync(mainWindow, {
+      type: 'question',
+      buttons: ['Leave', 'Stay'],
+      title: 'Leave site?',
+      message: 'Changes you made may not be saved.',
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (choice === 0) {
+      event.preventDefault();
     }
   });
 
@@ -351,6 +570,12 @@ function sendTabsChanged() {
 
 function setTabBounds(view) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
+  const tab = tabs.find(t => t.view === view);
+  if (tab && tab.isHtmlFullScreen) {
+    const [width, height] = mainWindow.getContentSize();
+    view.setBounds({ x: 0, y: 0, width, height });
+    return;
+  }
   const [width, height] = mainWindow.getContentSize();
   const dividerWidth = sidebarVisible ? 4 : 0;
   view.setBounds({
@@ -364,6 +589,41 @@ function setTabBounds(view) {
 function updateAllTabBounds() {
   for (const tab of tabs) {
     setTabBounds(tab.view);
+  }
+}
+
+function zoomIn() {
+  const view = getActiveView();
+  if (!view) return;
+  const current = view.webContents.getZoomFactor();
+  const next = ZOOM_FACTORS.find(f => f > current + 0.001);
+  if (next) {
+    view.webContents.setZoomFactor(next);
+    sendZoomChanged(next);
+  }
+}
+
+function zoomOut() {
+  const view = getActiveView();
+  if (!view) return;
+  const current = view.webContents.getZoomFactor();
+  const prev = [...ZOOM_FACTORS].reverse().find(f => f < current - 0.001);
+  if (prev) {
+    view.webContents.setZoomFactor(prev);
+    sendZoomChanged(prev);
+  }
+}
+
+function resetZoom() {
+  const view = getActiveView();
+  if (!view) return;
+  view.webContents.setZoomFactor(1.0);
+  sendZoomChanged(1.0);
+}
+
+function sendZoomChanged(factor) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('zoom-changed', Math.round(factor * 100));
   }
 }
 
@@ -650,6 +910,45 @@ ipcMain.handle('get-tabs', () => {
     tabs: tabs.map(t => ({ id: t.id, title: t.title, url: t.url, pinned: t.pinned, favicon: t.favicon, isLoading: t.isLoading })),
     activeTabId,
   };
+});
+
+// Find in page
+ipcMain.on('find-in-page', (_, text) => {
+  const view = getActiveView();
+  if (view && text) {
+    lastFindText = text;
+    view.webContents.findInPage(text);
+  }
+});
+
+ipcMain.on('find-next', (_, forward) => {
+  const view = getActiveView();
+  if (view && lastFindText) {
+    view.webContents.findInPage(lastFindText, { findNext: true, forward });
+  }
+});
+
+ipcMain.on('find-close', () => {
+  const view = getActiveView();
+  if (view) {
+    view.webContents.stopFindInPage('clearSelection');
+  }
+  lastFindText = '';
+});
+
+ipcMain.on('download-cancel', (_, id) => {
+  const item = downloads.get(id);
+  if (item) item.cancel();
+});
+
+ipcMain.on('download-open', (_, id) => {
+  const item = downloads.get(id);
+  if (item && item.getSavePath()) shell.openPath(item.getSavePath());
+});
+
+ipcMain.on('download-show', (_, id) => {
+  const item = downloads.get(id);
+  if (item && item.getSavePath()) shell.showItemInFolder(item.getSavePath());
 });
 
 app.on('before-quit', () => {

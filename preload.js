@@ -28,4 +28,22 @@ contextBridge.exposeInMainWorld('api', {
   showTabContextMenu: (tabId) => ipcRenderer.send('tab-context-menu', tabId),
   getTabs: () => ipcRenderer.invoke('get-tabs'),
   onTabsChanged: (cb) => ipcRenderer.on('tabs-changed', (_, data) => cb(data)),
+  // Find in page
+  findInPage: (text) => ipcRenderer.send('find-in-page', text),
+  findNext: (forward) => ipcRenderer.send('find-next', forward),
+  findClose: () => ipcRenderer.send('find-close'),
+  onFindResults: (cb) => ipcRenderer.on('find-results', (_, data) => cb(data)),
+  onShowFindBar: (cb) => ipcRenderer.on('show-find-bar', () => cb()),
+  // Zoom
+  onZoomChanged: (cb) => ipcRenderer.on('zoom-changed', (_, percent) => cb(percent)),
+  // Downloads
+  onDownloadProgress: (cb) => ipcRenderer.on('download-progress', (_, data) => cb(data)),
+  onDownloadDone: (cb) => ipcRenderer.on('download-done', (_, data) => cb(data)),
+  downloadCancel: (id) => ipcRenderer.send('download-cancel', id),
+  downloadOpen: (id) => ipcRenderer.send('download-open', id),
+  downloadShow: (id) => ipcRenderer.send('download-show', id),
+  // Status bar
+  onStatusBarUrl: (cb) => ipcRenderer.on('status-bar-url', (_, url) => cb(url)),
+  // Fullscreen
+  onFullscreenChanged: (cb) => ipcRenderer.on('fullscreen-changed', (_, isFs) => cb(isFs)),
 });

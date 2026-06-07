@@ -6203,4 +6203,139 @@ WARNING: This link could potentially be dangerous`)) {
       document.body.style.userSelect = "";
     }
   });
+  var findBar = document.getElementById("find-bar");
+  var findInput = document.getElementById("find-input");
+  var findMatches = document.getElementById("find-matches");
+  var findNextBtn = document.getElementById("find-next-btn");
+  var findPrevBtn = document.getElementById("find-prev-btn");
+  var findCloseBtn = document.getElementById("find-close-btn");
+  var currentFindText = "";
+  function showFindBar() {
+    findBar.classList.remove("hidden");
+    findInput.focus();
+    findInput.select();
+  }
+  function hideFindBar() {
+    findBar.classList.add("hidden");
+    currentFindText = "";
+    findMatches.textContent = "0 of 0";
+    window.api.findClose();
+  }
+  window.api.onShowFindBar(() => showFindBar());
+  findInput.addEventListener("input", () => {
+    currentFindText = findInput.value;
+    if (currentFindText) {
+      window.api.findInPage(currentFindText);
+    } else {
+      findMatches.textContent = "0 of 0";
+      window.api.findClose();
+    }
+  });
+  findInput.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      hideFindBar();
+    } else if (e.key === "Enter") {
+      if (e.shiftKey) {
+        window.api.findNext(false);
+      } else {
+        window.api.findNext(true);
+      }
+    }
+  });
+  findNextBtn.addEventListener("click", () => window.api.findNext(true));
+  findPrevBtn.addEventListener("click", () => window.api.findNext(false));
+  findCloseBtn.addEventListener("click", () => hideFindBar());
+  window.api.onFindResults((data) => {
+    findMatches.textContent = `${data.current} of ${data.total}`;
+  });
+  var zoomIndicator = document.getElementById("zoom-indicator");
+  var zoomTimeout;
+  window.api.onZoomChanged((percent) => {
+    zoomIndicator.textContent = `${percent}%`;
+    zoomIndicator.classList.remove("hidden");
+    clearTimeout(zoomTimeout);
+    zoomTimeout = setTimeout(() => {
+      zoomIndicator.classList.add("hidden");
+    }, 1500);
+  });
+  var downloadShelf = document.getElementById("download-shelf");
+  var activeDownloads = /* @__PURE__ */ new Map();
+  function renderDownloadShelf() {
+    if (activeDownloads.size === 0) {
+      downloadShelf.classList.add("hidden");
+      return;
+    }
+    downloadShelf.classList.remove("hidden");
+    downloadShelf.innerHTML = "";
+    for (const [id, dl] of activeDownloads) {
+      const item = document.createElement("div");
+      item.className = "download-item";
+      const name = document.createElement("span");
+      name.className = "download-filename";
+      name.textContent = dl.filename;
+      item.appendChild(name);
+      if (dl.state === "progressing") {
+        const progress = document.createElement("div");
+        progress.className = "download-progress";
+        const fill = document.createElement("div");
+        fill.className = "download-progress-fill";
+        fill.style.width = `${dl.percentComplete}%`;
+        progress.appendChild(fill);
+        item.appendChild(progress);
+        const cancel = document.createElement("button");
+        cancel.className = "download-action";
+        cancel.textContent = "Cancel";
+        cancel.addEventListener("click", () => window.api.downloadCancel(id));
+        item.appendChild(cancel);
+      } else if (dl.state === "completed") {
+        const open = document.createElement("button");
+        open.className = "download-action";
+        open.textContent = "Open";
+        open.addEventListener("click", () => window.api.downloadOpen(id));
+        item.appendChild(open);
+        const show = document.createElement("button");
+        show.className = "download-action";
+        show.textContent = "Show";
+        show.addEventListener("click", () => window.api.downloadShow(id));
+        item.appendChild(show);
+      }
+      downloadShelf.appendChild(item);
+    }
+    const closeBtn = document.createElement("button");
+    closeBtn.id = "download-shelf-close";
+    closeBtn.textContent = "\xD7";
+    closeBtn.addEventListener("click", () => {
+      activeDownloads.clear();
+      renderDownloadShelf();
+    });
+    downloadShelf.appendChild(closeBtn);
+  }
+  window.api.onDownloadProgress((data) => {
+    activeDownloads.set(data.id, data);
+    renderDownloadShelf();
+  });
+  window.api.onDownloadDone((data) => {
+    activeDownloads.set(data.id, { ...activeDownloads.get(data.id), ...data });
+    renderDownloadShelf();
+  });
+  var statusBar = document.getElementById("status-bar");
+  window.api.onStatusBarUrl((url) => {
+    if (url) {
+      statusBar.textContent = url;
+      statusBar.classList.remove("hidden");
+    } else {
+      statusBar.classList.add("hidden");
+    }
+  });
+  window.api.onFullscreenChanged((isFs) => {
+    const toolbar = document.getElementById("toolbar");
+    const tabBar = document.getElementById("tab-bar");
+    if (isFs) {
+      toolbar.classList.add("hidden");
+      tabBar.classList.add("hidden");
+    } else {
+      toolbar.classList.remove("hidden");
+      tabBar.classList.remove("hidden");
+    }
+  });
 })();
