@@ -16,7 +16,7 @@ Brainstorm with me on different kinds of variants. Ask me questions about what m
 3. Implement the UI/UX design(s)
 4. Ask me for feedback on the design
 5. Go back to step 3 and iterate based on feedback.
-6. Read and follow `/home/amol/code/nori/nori-browser/.worktrees/slim-tea-20260606-205428/.claude/skills/building-user-interface-elements/SKILL.md` to properly take the finished design and implement it.
+6. Read and follow `/home/amol/code/nori/nori-browser/.worktrees/able-bee-20260606-204928/.claude/skills/building-user-interface-elements/SKILL.md` to properly take the finished design and implement it.
 </required>
 
 # Further guidance

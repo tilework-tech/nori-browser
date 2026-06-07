@@ -23,7 +23,7 @@ if (require.main === module) {
 }
 
 async function run(command, args) {
-  const { browser, page, pages } = await connectToBrowser();
+  const { browser, page, pages, contexts } = await connectToBrowser();
 
   try {
     switch (command) {
@@ -102,9 +102,56 @@ async function run(command, args) {
         console.log('SCREENSHOT_OK');
         break;
       }
+      case 'list-tabs': {
+        for (let i = 0; i < pages.length; i++) {
+          const url = pages[i].url();
+          const title = await pages[i].title();
+          console.log(`Tab ${i}: ${title} - ${url}`);
+        }
+        console.log(`Total: ${pages.length} tabs`);
+        console.log('LIST_TABS_OK');
+        break;
+      }
+      case 'new-tab': {
+        const url = args[0] || 'about:blank';
+        const context = contexts[0];
+        const newPage = await context.newPage();
+        if (url !== 'about:blank') {
+          await newPage.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        }
+        const allPages = contexts.flatMap((c) => c.pages());
+        console.log(`New tab opened: ${url}`);
+        console.log(`Total: ${allPages.length} tabs`);
+        console.log('NEW_TAB_OK');
+        break;
+      }
+      case 'close-tab': {
+        const idx = parseInt(args[0] || '0');
+        if (isNaN(idx) || idx < 0 || idx >= pages.length) {
+          console.error(`Invalid tab index: ${args[0]}. Available: 0-${pages.length - 1}`);
+          process.exit(1);
+        }
+        await pages[idx].close();
+        console.log(`Closed tab ${idx}`);
+        console.log('CLOSE_TAB_OK');
+        break;
+      }
+      case 'switch-tab': {
+        const idx = parseInt(args[0]);
+        if (isNaN(idx) || idx < 0 || idx >= pages.length) {
+          console.error(`Invalid tab index: ${args[0]}. Available: 0-${pages.length - 1}`);
+          process.exit(1);
+        }
+        await pages[idx].bringToFront();
+        const url = pages[idx].url();
+        const title = await pages[idx].title();
+        console.log(`Switched to tab ${idx}: ${title} - ${url}`);
+        console.log('SWITCH_TAB_OK');
+        break;
+      }
       default:
         console.error(`Unknown command: ${command}`);
-        console.error('Commands: status, navigate, snapshot, click, fill, eval, content, screenshot');
+        console.error('Commands: status, navigate, snapshot, click, fill, eval, content, screenshot, list-tabs, new-tab, close-tab, switch-tab');
         process.exit(1);
     }
   } finally {

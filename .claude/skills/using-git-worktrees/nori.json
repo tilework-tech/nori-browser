@@ -1,7 +1,6 @@
 {
   "name": "using-git-worktrees",
-  "version": "1.0.8",
-  "type": "skill",
-  "description": "Use this whenever you need to create an isolated workspace. Optionally symlinks gitignored-but-active content (e.g., `data/`, `.env.local`) from the main worktree to prevent loss on cleanup.",
-  "registryURL": "http://noriskillsets.dev"
+  "version": "1.0.6",
+  "description": "Use this whenever you need to create an isolated workspace.",
+  "type": "skill"
 }

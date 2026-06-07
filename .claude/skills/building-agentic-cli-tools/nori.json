@@ -1,7 +1,5 @@
 {
   "name": "building-agentic-cli-tools",
   "version": "1.0.0",
-  "type": "skill",
-  "description": "Read this skill whenever you need to build a cli where the primary consumer is the agent.",
-  "registryURL": "http://noriskillsets.dev"
+  "type": "skill"
 }

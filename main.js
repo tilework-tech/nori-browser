@@ -1,4 +1,4 @@
-const { app, BrowserWindow, WebContentsView, ipcMain } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, Menu } = require('electron');
 const net = require('net');
 const path = require('path');
 const fs = require('fs');
@@ -10,7 +10,6 @@ const CONTROL_PORT = parseInt(process.env.NORI_BROWSER_CONTROL_PORT || '0');
 app.commandLine.appendSwitch('remote-debugging-port', String(CDP_PORT));
 
 let mainWindow;
-let browserView;
 let ptyProcess;
 let controlServer;
 let controlSockets = new Set();
@@ -19,6 +18,13 @@ let savedSidebarWidth = 400;
 let sidebarVisible = true;
 let sessionDir;
 const TOOLBAR_HEIGHT = 48;
+const TAB_BAR_HEIGHT = 36;
+
+let tabs = [];
+let activeTabId = null;
+let nextTabId = 1;
+const MAX_CLOSED_TABS = 25;
+let closedTabStack = [];
 
 app.whenReady().then(() => {
   createWindow();
@@ -38,14 +44,23 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
-  browserView = new WebContentsView({
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
+  mainWindow.once('ready-to-show', updateAllTabBounds);
+  mainWindow.on('resize', updateAllTabBounds);
+  mainWindow.on('maximize', () => {
+    updateAllTabBounds();
+    setTimeout(updateAllTabBounds, 100);
   });
-  mainWindow.contentView.addChildView(browserView);
-  browserView.webContents.loadURL('about:blank');
+  mainWindow.on('unmaximize', () => {
+    updateAllTabBounds();
+    setTimeout(updateAllTabBounds, 100);
+  });
+  mainWindow.on('enter-full-screen', updateAllTabBounds);
+  mainWindow.on('leave-full-screen', updateAllTabBounds);
+
+  mainWindow.webContents.once('did-finish-load', () => {
+    createTab('about:blank');
+    mainWindow.webContents.send('cdp-port', CDP_PORT);
+  });
 
   function interceptToggleShortcut(event, input) {
     if (input.control && input.key.toLowerCase() === 'j' && input.type === 'keyDown') {
@@ -54,59 +69,301 @@ function createWindow() {
     }
   }
   mainWindow.webContents.on('before-input-event', interceptToggleShortcut);
-  browserView.webContents.on('before-input-event', interceptToggleShortcut);
 
-  mainWindow.once('ready-to-show', updateBrowserViewBounds);
-  mainWindow.on('resize', updateBrowserViewBounds);
-  mainWindow.on('maximize', () => {
-    updateBrowserViewBounds();
-    setTimeout(updateBrowserViewBounds, 100);
-  });
-  mainWindow.on('unmaximize', () => {
-    updateBrowserViewBounds();
-    setTimeout(updateBrowserViewBounds, 100);
-  });
-  mainWindow.on('enter-full-screen', updateBrowserViewBounds);
-  mainWindow.on('leave-full-screen', updateBrowserViewBounds);
-
-  mainWindow.webContents.once('did-finish-load', () => {
-    updateBrowserViewBounds();
-    mainWindow.webContents.send('cdp-port', CDP_PORT);
-  });
-
-  browserView.webContents.on('did-navigate', (_, url) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('url-changed', url);
-    }
-  });
-  browserView.webContents.on('did-navigate-in-page', (_, url) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('url-changed', url);
-    }
-  });
-  browserView.webContents.on('page-title-updated', (_, title) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.setTitle(`${title} — Nori Browser`);
-    }
-  });
+  const menu = Menu.buildFromTemplate([
+    {
+      label: 'File',
+      submenu: [
+        { label: 'New Tab', accelerator: 'CmdOrCtrl+T', click: () => createTab('about:blank') },
+        { label: 'Close Tab', accelerator: 'CmdOrCtrl+W', click: () => { if (activeTabId !== null) closeTab(activeTabId); } },
+        { label: 'Reopen Closed Tab', accelerator: 'CmdOrCtrl+Shift+T', click: () => reopenClosedTab() },
+      ],
+    },
+    {
+      label: 'Tab',
+      submenu: [
+        { label: 'Next Tab', accelerator: 'Ctrl+Tab', click: () => switchToNextTab() },
+        { label: 'Previous Tab', accelerator: 'Ctrl+Shift+Tab', click: () => switchToPrevTab() },
+        { label: 'Move Tab Right', accelerator: 'Ctrl+Shift+PageDown', click: () => moveTabRight() },
+        { label: 'Move Tab Left', accelerator: 'Ctrl+Shift+PageUp', click: () => moveTabLeft() },
+        { type: 'separator' },
+        ...Array.from({ length: 8 }, (_, i) => ({
+          label: `Tab ${i + 1}`,
+          accelerator: `CmdOrCtrl+${i + 1}`,
+          click: () => { if (i < tabs.length) switchTab(tabs[i].id); },
+        })),
+        { label: 'Last Tab', accelerator: 'CmdOrCtrl+9', click: () => { if (tabs.length > 0) switchTab(tabs[tabs.length - 1].id); } },
+      ],
+    },
+  ]);
+  Menu.setApplicationMenu(menu);
 
   mainWindow.on('closed', () => {
-    browserView = null;
     mainWindow = null;
     if (ptyProcess) ptyProcess.kill();
   });
 }
 
-function updateBrowserViewBounds() {
-  if (!browserView || !mainWindow || mainWindow.isDestroyed()) return;
+function createTab(url, insertIndex) {
+  const id = String(nextTabId++);
+  const view = new WebContentsView({
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+
+  mainWindow.contentView.addChildView(view);
+  view.setVisible(false);
+
+  const tab = { id, view, title: 'New Tab', url: url || 'about:blank', pinned: false, favicon: '', isLoading: false };
+  if (insertIndex !== undefined && insertIndex >= 0 && insertIndex <= tabs.length) {
+    tabs.splice(insertIndex, 0, tab);
+  } else {
+    tabs.push(tab);
+  }
+
+  view.webContents.on('did-navigate', (_, navUrl) => {
+    tab.url = navUrl;
+    if (activeTabId === id && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('url-changed', navUrl);
+    }
+    sendTabsChanged();
+  });
+
+  view.webContents.on('did-navigate-in-page', (_, navUrl) => {
+    tab.url = navUrl;
+    if (activeTabId === id && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('url-changed', navUrl);
+    }
+    sendTabsChanged();
+  });
+
+  view.webContents.on('page-title-updated', (_, title) => {
+    tab.title = title;
+    if (activeTabId === id && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setTitle(`${title} — Nori Browser`);
+    }
+    sendTabsChanged();
+  });
+
+  view.webContents.on('page-favicon-updated', (_, favicons) => {
+    tab.favicon = favicons[0] || '';
+    sendTabsChanged();
+  });
+
+  view.webContents.on('did-start-loading', () => {
+    tab.isLoading = true;
+    sendTabsChanged();
+  });
+
+  view.webContents.on('did-stop-loading', () => {
+    tab.isLoading = false;
+    sendTabsChanged();
+  });
+
+  view.webContents.on('did-start-navigation', (details) => {
+    if (details.isMainFrame && !details.isSameDocument) {
+      tab.favicon = '';
+      sendTabsChanged();
+    }
+  });
+
+  view.webContents.on('before-input-event', (event, input) => {
+    if (input.control && input.key.toLowerCase() === 'j' && input.type === 'keyDown') {
+      event.preventDefault();
+      handleToggleSidebar();
+    }
+  });
+
+  view.webContents.setWindowOpenHandler(({ url: openUrl }) => {
+    createTab(openUrl);
+    return { action: 'deny' };
+  });
+
+  setTabBounds(view);
+  switchTab(id);
+  view.webContents.loadURL(url || 'about:blank');
+
+  return id;
+}
+
+function closeTab(tabId) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const idx = tabs.findIndex(t => t.id === tabId);
+  if (idx === -1) return;
+
+  const tab = tabs[idx];
+  closedTabStack.push({ url: tab.url, title: tab.title, index: idx });
+  if (closedTabStack.length > MAX_CLOSED_TABS) closedTabStack.shift();
+
+  mainWindow.contentView.removeChildView(tab.view);
+  tab.view.webContents.close();
+  tabs.splice(idx, 1);
+
+  if (tabs.length === 0) {
+    mainWindow.close();
+    return;
+  }
+
+  if (activeTabId === tabId) {
+    const newIdx = Math.min(idx, tabs.length - 1);
+    switchTab(tabs[newIdx].id);
+  } else {
+    sendTabsChanged();
+  }
+}
+
+function switchTab(tabId) {
+  const tab = tabs.find(t => t.id === tabId);
+  if (!tab) return;
+
+  if (activeTabId !== null) {
+    const oldTab = tabs.find(t => t.id === activeTabId);
+    if (oldTab) oldTab.view.setVisible(false);
+  }
+
+  activeTabId = tabId;
+  tab.view.setVisible(true);
+  setTabBounds(tab.view);
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('url-changed', tab.url);
+    mainWindow.setTitle(`${tab.title} — Nori Browser`);
+  }
+
+  sendTabsChanged();
+}
+
+function switchToNextTab() {
+  if (tabs.length < 2) return;
+  const idx = tabs.findIndex(t => t.id === activeTabId);
+  const nextIdx = (idx + 1) % tabs.length;
+  switchTab(tabs[nextIdx].id);
+}
+
+function switchToPrevTab() {
+  if (tabs.length < 2) return;
+  const idx = tabs.findIndex(t => t.id === activeTabId);
+  const prevIdx = (idx - 1 + tabs.length) % tabs.length;
+  switchTab(tabs[prevIdx].id);
+}
+
+function reorderTab(tabId, newIndex) {
+  const idx = tabs.findIndex(t => t.id === tabId);
+  if (idx === -1) return;
+  const tab = tabs[idx];
+  const pinnedCount = getPinnedCount();
+  let clamped;
+  if (tab.pinned) {
+    clamped = Math.max(0, Math.min(pinnedCount - 1, newIndex));
+  } else {
+    clamped = Math.max(pinnedCount, Math.min(tabs.length - 1, newIndex));
+  }
+  const [removed] = tabs.splice(idx, 1);
+  tabs.splice(clamped, 0, removed);
+  sendTabsChanged();
+}
+
+function moveTabRight() {
+  const idx = tabs.findIndex(t => t.id === activeTabId);
+  if (idx === -1 || idx >= tabs.length - 1) return;
+  const tab = tabs[idx];
+  if (tab.pinned && idx >= getPinnedCount() - 1) return;
+  reorderTab(activeTabId, idx + 1);
+}
+
+function moveTabLeft() {
+  const idx = tabs.findIndex(t => t.id === activeTabId);
+  if (idx <= 0) return;
+  const tab = tabs[idx];
+  if (!tab.pinned && idx <= getPinnedCount()) return;
+  reorderTab(activeTabId, idx - 1);
+}
+
+function getPinnedCount() {
+  return tabs.filter(t => t.pinned).length;
+}
+
+function pinTab(tabId) {
+  const tab = tabs.find(t => t.id === tabId);
+  if (!tab || tab.pinned) return;
+  tab.pinned = true;
+  const idx = tabs.indexOf(tab);
+  tabs.splice(idx, 1);
+  const pinnedCount = getPinnedCount();
+  tabs.splice(pinnedCount, 0, tab);
+  sendTabsChanged();
+}
+
+function unpinTab(tabId) {
+  const tab = tabs.find(t => t.id === tabId);
+  if (!tab || !tab.pinned) return;
+  tab.pinned = false;
+  const idx = tabs.indexOf(tab);
+  tabs.splice(idx, 1);
+  const pinnedCount = getPinnedCount();
+  tabs.splice(pinnedCount, 0, tab);
+  sendTabsChanged();
+}
+
+function reopenClosedTab() {
+  if (closedTabStack.length === 0) return;
+  const entry = closedTabStack.pop();
+  const pinnedCount = getPinnedCount();
+  const insertAt = Math.max(pinnedCount, Math.min(entry.index, tabs.length));
+  createTab(entry.url, insertAt);
+}
+
+function duplicateTab(tabId) {
+  const tab = tabs.find(t => t.id === tabId);
+  if (!tab) return;
+  const insertAt = tab.pinned ? getPinnedCount() : tabs.indexOf(tab) + 1;
+  createTab(tab.url, insertAt);
+}
+
+function closeOtherTabs(tabId) {
+  if (!tabs.some(t => t.id === tabId)) return;
+  const toClose = tabs.filter(t => t.id !== tabId && !t.pinned).map(t => t.id);
+  for (const id of toClose) closeTab(id);
+}
+
+function closeTabsToRight(tabId) {
+  const idx = tabs.findIndex(t => t.id === tabId);
+  if (idx === -1) return;
+  const toClose = tabs.slice(idx + 1).filter(t => !t.pinned).map(t => t.id);
+  for (const id of toClose) closeTab(id);
+}
+
+function getActiveView() {
+  const tab = tabs.find(t => t.id === activeTabId);
+  return tab ? tab.view : null;
+}
+
+function sendTabsChanged() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send('tabs-changed', {
+    tabs: tabs.map(t => ({ id: t.id, title: t.title, url: t.url, pinned: t.pinned, favicon: t.favicon, isLoading: t.isLoading })),
+    activeTabId,
+  });
+}
+
+function setTabBounds(view) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
   const [width, height] = mainWindow.getContentSize();
   const dividerWidth = sidebarVisible ? 4 : 0;
-  browserView.setBounds({
+  view.setBounds({
     x: sidebarWidth + dividerWidth,
-    y: TOOLBAR_HEIGHT,
+    y: TOOLBAR_HEIGHT + TAB_BAR_HEIGHT,
     width: Math.max(0, width - sidebarWidth - dividerWidth),
-    height: Math.max(0, height - TOOLBAR_HEIGHT),
+    height: Math.max(0, height - TOOLBAR_HEIGHT - TAB_BAR_HEIGHT),
   });
+}
+
+function updateAllTabBounds() {
+  for (const tab of tabs) {
+    setTabBounds(tab.view);
+  }
 }
 
 function handleToggleSidebar() {
@@ -119,7 +376,7 @@ function handleToggleSidebar() {
     sidebarWidth = savedSidebarWidth;
     sidebarVisible = true;
   }
-  updateBrowserViewBounds();
+  updateAllTabBounds();
   mainWindow.webContents.send('sidebar-toggled', sidebarVisible);
 }
 
@@ -144,6 +401,19 @@ Commands:
   eval <expression>   - Evaluate JavaScript on the page
   content             - Get page text content
   screenshot [path]   - Take a screenshot
+  list-tabs           - List all open tabs
+  new-tab [url]       - Open a new tab
+  close-tab [index]   - Close a tab by index
+  switch-tab <index>  - Switch to a tab by index
+
+Additional tab operations are available via the renderer page's window.api:
+  window.api.duplicateTab(tabId)      - Duplicate a tab
+  window.api.closeOtherTabs(tabId)    - Close all tabs except the specified one
+  window.api.closeTabsToRight(tabId)  - Close all tabs to the right of the specified one
+  window.api.reopenClosedTab()        - Reopen the most recently closed tab
+  window.api.reorderTab(tabId, index) - Move a tab to a new position
+  window.api.pinTab(tabId)            - Pin a tab (moves to left, shows favicon only)
+  window.api.unpinTab(tabId)          - Unpin a tab
 
 You can also use Playwright directly by connecting over CDP:
 
@@ -261,25 +531,29 @@ ipcMain.on('terminal-resize', (_, { cols, rows }) => {
 });
 
 ipcMain.on('navigate', (_, url) => {
-  if (!browserView) return;
+  const view = getActiveView();
+  if (!view) return;
   if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-  browserView.webContents.loadURL(url);
+  view.webContents.loadURL(url);
 });
 
 ipcMain.on('go-back', () => {
-  if (browserView && browserView.webContents.canGoBack()) {
-    browserView.webContents.goBack();
+  const view = getActiveView();
+  if (view && view.webContents.canGoBack()) {
+    view.webContents.goBack();
   }
 });
 
 ipcMain.on('go-forward', () => {
-  if (browserView && browserView.webContents.canGoForward()) {
-    browserView.webContents.goForward();
+  const view = getActiveView();
+  if (view && view.webContents.canGoForward()) {
+    view.webContents.goForward();
   }
 });
 
 ipcMain.on('reload', () => {
-  if (browserView) browserView.webContents.reload();
+  const view = getActiveView();
+  if (view) view.webContents.reload();
 });
 
 ipcMain.on('toggle-sidebar', handleToggleSidebar);
@@ -287,7 +561,71 @@ ipcMain.on('toggle-sidebar', handleToggleSidebar);
 ipcMain.on('sidebar-resize', (_, width) => {
   sidebarWidth = width;
   savedSidebarWidth = width;
-  updateBrowserViewBounds();
+  updateAllTabBounds();
+});
+
+ipcMain.on('create-tab', (_, url) => {
+  createTab(url || 'about:blank');
+});
+
+ipcMain.on('close-tab', (_, tabId) => {
+  closeTab(tabId);
+});
+
+ipcMain.on('switch-tab', (_, tabId) => {
+  switchTab(tabId);
+});
+
+ipcMain.on('reorder-tab', (_, tabId, newIndex) => {
+  reorderTab(tabId, newIndex);
+});
+
+ipcMain.on('reopen-closed-tab', () => {
+  reopenClosedTab();
+});
+
+ipcMain.on('duplicate-tab', (_, tabId) => {
+  duplicateTab(tabId);
+});
+
+ipcMain.on('close-other-tabs', (_, tabId) => {
+  closeOtherTabs(tabId);
+});
+
+ipcMain.on('close-tabs-to-right', (_, tabId) => {
+  closeTabsToRight(tabId);
+});
+
+ipcMain.on('pin-tab', (_, tabId) => {
+  pinTab(tabId);
+});
+
+ipcMain.on('unpin-tab', (_, tabId) => {
+  unpinTab(tabId);
+});
+
+ipcMain.on('tab-context-menu', (event, tabId) => {
+  const tab = tabs.find(t => t.id === tabId);
+  if (!tab) return;
+  const menu = Menu.buildFromTemplate([
+    { label: 'New Tab', click: () => createTab('about:blank') },
+    { label: 'Reload', click: () => { const t = tabs.find(t => t.id === tabId); if (t) t.view.webContents.reload(); } },
+    { label: 'Duplicate', click: () => duplicateTab(tabId) },
+    { type: 'separator' },
+    { label: tab.pinned ? 'Unpin Tab' : 'Pin Tab', click: tab.pinned ? () => unpinTab(tabId) : () => pinTab(tabId) },
+    { type: 'separator' },
+    { label: 'Close Tab', click: () => closeTab(tabId) },
+    { label: 'Close Other Tabs', click: () => closeOtherTabs(tabId) },
+    { label: 'Close Tabs to the Right', click: () => closeTabsToRight(tabId) },
+  ]);
+  menu.popup({ window: BrowserWindow.fromWebContents(event.sender) });
+});
+
+ipcMain.handle('get-tabs', () => {
+  return {
+    tabs: tabs.map(t => ({ id: t.id, title: t.title, url: t.url, pinned: t.pinned, favicon: t.favicon, isLoading: t.isLoading })),
+    activeTabId,
+  };
 });
 
 app.on('before-quit', () => {

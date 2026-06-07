@@ -1,4 +1,5 @@
 {
   "version": "1.0.0",
-  "registryUrl": "https://noriskillsets.dev"
+  "registryUrl": "https://noriskillsets.dev",
+  "orgId": "public"
 }

@@ -1,7 +1,6 @@
 {
   "name": "using-skills",
   "version": "1.0.6",
-  "type": "skill",
   "description": "Describes how to use abilities. Read before any conversation.",
-  "registryURL": "http://noriskillsets.dev"
+  "type": "skill"
 }

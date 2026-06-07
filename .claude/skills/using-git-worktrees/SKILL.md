@@ -1,6 +1,6 @@
 ---
 name: using-git-worktrees
-description: Use this whenever you need to create an isolated workspace. Optionally symlinks gitignored-but-active content (e.g., `data/`, `.env.local`) from the main worktree to prevent loss on cleanup.
+description: Use this whenever you need to create an isolated workspace.
 ---
 
 <required>
@@ -27,17 +27,7 @@ grep -q "^\.worktrees/$" .gitignore || grep -q "^worktrees/$" .gitignore
 - Create the worktree with the Bash tool: `git worktree add ".worktrees/$BRANCH_NAME" -b "$BRANCH_NAME"
 - cd into the newly created path with the Bash tool: `cd $path`
 
-4. Symlink shared gitignored content.
-
-- Read the .gitignore. Find files that need to be symlinked into the worktree, e.g.
-  - credentials
-  - env files
-  - data /  model caches
-- Symlink each file from the main worktree.
-
-<system-reminder> Symlinks are bidirectional. If producing data that should be cached in a worktree, we want that data to live in the main worktree. We want to avoid situations where I run multi-hour experiments with checkpoints, only to have those checkpoints deleted on worktree cleanup. </system-reminder>
-
-5. Auto-detect and run project setup.
+4. Auto-detect and run project setup.
 
 ```bash
 # Node.js
@@ -56,7 +46,7 @@ if [ -f go.mod ]; then go mod download; fi
 
 - If there is no obvious project setup, you _MUST_ ask me.
 
-6. Run tests to ensure the worktree is clean.
+5. Run tests to ensure the worktree is clean.
 
 ```bash
 # Examples - use project-appropriate command
@@ -70,16 +60,15 @@ go test ./...
 
 **If tests pass:** Report ready.
 
-7. Report Location
+6. Report Location
 
 ```
 New working directory: <full-path>
-Shared symlinks: <list created — e.g., "data/, .env.local" — or "none">
 Tests passing (<N> tests, 0 failures)
 All commands and tools will now refer to: <full-path>
 ```
 
-8. Understand that you are now in a new working directory. Your Bash tool instructions from here on out should refer to the worktree directory, NOT your original directory. This is ABSOLUTELY CRITICAL.
+7. Understand that you are now in a new working directory. Your Bash tool instructions from here on out should refer to the worktree directory, NOT your original directory. This is ABSOLUTELY CRITICAL.
 
 </required>
 
@@ -125,26 +114,72 @@ Red Flags:
 - Running pwd and NOT seeing .worktrees/ in the path
 - Any cd .. command while in a worktree
 
-# Accessing Symlinked Content
+# Quick Reference
 
-Access symlinked content through the relative path from within the worktree. Don't resolve the symlink and use the underlying absolute path.
+| Situation                   | Action                     |
+| --------------------------- | -------------------------- |
+| `.worktrees/` exists        | Use it (verify .gitignore) |
+| `.worktree/s does not exist | Check CLAUDE.md → Ask user |
+| Directory not in .gitignore | Add it immediately         |
+| Tests fail during baseline  | Report failures + ask      |
+| No package.json/Cargo.toml  | Skip dependency install    |
 
-<good-example>
-# Relative path from the worktree root — works regardless of how the chain is configured
-checkpoint_path = "data/checkpoints/run_42.json"
-</good-example>
+# Common Mistakes
 
-<bad-example>
-real_path = os.path.realpath("data")
-checkpoint_path = f"{real_path}/checkpoints/run_42.json"
-</bad-example>
+**Skipping .gitignore verification**
 
-<bad-example>
-checkpoint_path = "/absolute/path/to/shared/data/root/<project>/checkpoints/run_42.json"
-</bad-example>
+- **Problem:** Worktree contents get tracked, pollute git status
+- **Fix:** Always grep .gitignore before creating project-local worktree
 
-If a tool requires an absolute path, construct from the worktree root, not from the resolved symlink target:
+**Assuming directory location**
 
-<good-example>
-absolute_data = f"{os.getcwd()}/data"  # worktree root + relative; the OS follows the chain transparently
-</good-example>
+- **Problem:** Creates inconsistency, violates project conventions
+- **Fix:** Follow priority: existing > CLAUDE.md > ask
+
+**Missing project installation**
+
+- **Problem:** Tests and lint will fail, breaking the project
+- **Fix:** Always install the project when creating a new worktree
+
+**Proceeding with failing tests**
+
+- **Problem:** Can't distinguish new bugs from pre-existing issues
+- **Fix:** Report failures, get explicit permission to proceed
+
+**Hardcoding setup commands**
+
+- **Problem:** Breaks on projects using different tools
+- **Fix:** Auto-detect from project files (package.json, etc.)
+
+# Example Workflow
+
+```
+You: I'm using the Using Git Worktrees skill to set up an isolated workspace.
+
+[Check .worktrees/ - exists]
+[Verify .gitignore - contains .worktrees/]
+[Create worktree: git worktree add .worktrees/auth -b feature/auth]
+[Run npm install]
+[Run npm test - 47 passing]
+
+Worktree ready at myproject/.worktrees/auth
+Tests passing (47 tests, 0 failures)
+Ready to implement auth feature
+```
+
+# Red Flags
+
+**Never:**
+
+- Create worktree without .gitignore verification (project-local)
+- Skip baseline test verification
+- Proceed with failing tests without asking
+- Assume directory location when ambiguous
+- Skip CLAUDE.md check
+
+**Always:**
+
+- Follow directory priority: existing > CLAUDE.md > ask
+- Verify .gitignore for project-local
+- Auto-detect and run project setup
+- Verify clean test baseline
