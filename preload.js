@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('api', {
   showTabContextMenu: (tabId) => ipcRenderer.send('tab-context-menu', tabId),
   getTabs: () => ipcRenderer.invoke('get-tabs'),
   onTabsChanged: (cb) => ipcRenderer.on('tabs-changed', (_, data) => cb(data)),
+  queryOmnibar: (query) => ipcRenderer.invoke('omnibar-query', query),
   // Find in page
   findInPage: (text) => ipcRenderer.send('find-in-page', text),
   findNext: (forward) => ipcRenderer.send('find-next', forward),

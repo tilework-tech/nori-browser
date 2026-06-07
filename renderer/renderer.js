@@ -52,14 +52,108 @@ const resizeObserver = new ResizeObserver(() => {
 resizeObserver.observe(terminalContainer);
 
 const urlBar = document.getElementById('url-bar');
-urlBar.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    window.api.navigate(urlBar.value);
+const omnibarDropdown = document.getElementById('omnibar-dropdown');
+let omnibarSelectedIndex = -1;
+let omnibarDebounceTimer = null;
+
+function renderOmnibar(results) {
+  omnibarDropdown.innerHTML = '';
+  omnibarSelectedIndex = -1;
+  if (!results || results.length === 0) {
+    omnibarDropdown.classList.remove('visible');
+    return;
   }
+  for (const item of results) {
+    const el = document.createElement('div');
+    el.className = 'omnibar-item';
+    el.dataset.url = item.url;
+
+    if (item.source === 'bookmark') {
+      const star = document.createElement('span');
+      star.className = 'omnibar-bookmark-star';
+      star.textContent = '★';
+      el.appendChild(star);
+    }
+
+    const title = document.createElement('span');
+    title.className = 'omnibar-title';
+    title.textContent = item.title || item.url;
+    el.appendChild(title);
+
+    const url = document.createElement('span');
+    url.className = 'omnibar-url';
+    url.textContent = item.url;
+    el.appendChild(url);
+
+    el.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      window.api.navigate(item.url);
+      omnibarDropdown.classList.remove('visible');
+    });
+
+    omnibarDropdown.appendChild(el);
+  }
+  omnibarDropdown.classList.add('visible');
+}
+
+urlBar.addEventListener('input', () => {
+  clearTimeout(omnibarDebounceTimer);
+  const query = urlBar.value.trim();
+  if (!query) {
+    omnibarDropdown.classList.remove('visible');
+    return;
+  }
+  omnibarDebounceTimer = setTimeout(async () => {
+    const results = await window.api.queryOmnibar(query);
+    if (urlBar.value.trim() === query) {
+      renderOmnibar(results);
+    }
+  }, 150);
+});
+
+urlBar.addEventListener('keydown', (e) => {
+  const items = omnibarDropdown.querySelectorAll('.omnibar-item');
+  if (e.key === 'ArrowDown' && items.length > 0) {
+    e.preventDefault();
+    omnibarSelectedIndex = Math.min(omnibarSelectedIndex + 1, items.length - 1);
+    items.forEach((el, i) => el.classList.toggle('selected', i === omnibarSelectedIndex));
+    return;
+  }
+  if (e.key === 'ArrowUp' && items.length > 0) {
+    e.preventDefault();
+    omnibarSelectedIndex = Math.max(omnibarSelectedIndex - 1, -1);
+    items.forEach((el, i) => el.classList.toggle('selected', i === omnibarSelectedIndex));
+    return;
+  }
+  if (e.key === 'Escape') {
+    omnibarDropdown.classList.remove('visible');
+    omnibarSelectedIndex = -1;
+    return;
+  }
+  if (e.key === 'Enter') {
+    if (omnibarSelectedIndex >= 0 && omnibarSelectedIndex < items.length) {
+      const selectedUrl = items[omnibarSelectedIndex].dataset.url;
+      window.api.navigate(selectedUrl);
+      omnibarDropdown.classList.remove('visible');
+      omnibarSelectedIndex = -1;
+    } else {
+      window.api.navigate(urlBar.value);
+      omnibarDropdown.classList.remove('visible');
+    }
+    return;
+  }
+});
+
+urlBar.addEventListener('blur', () => {
+  setTimeout(() => {
+    omnibarDropdown.classList.remove('visible');
+    omnibarSelectedIndex = -1;
+  }, 200);
 });
 
 window.api.onUrlChanged((url) => {
   urlBar.value = url;
+  omnibarDropdown.classList.remove('visible');
 });
 
 document.getElementById('btn-back').addEventListener('click', () => window.api.goBack());
