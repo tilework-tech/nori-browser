@@ -69,6 +69,7 @@ test.describe('Nori Browser', () => {
         NORI_BROWSER_SHELL: '/bin/bash',
         NORI_BROWSER_CDP_PORT: String(CDP_PORT),
         NORI_BROWSER_CONTROL_PORT: String(CONTROL_PORT),
+        NORI_BROWSER_HEADLESS: '1',
       },
     });
 
@@ -101,6 +102,13 @@ test.describe('Nori Browser', () => {
       electronApp = null;
     }
     if (testServer) await new Promise((resolve) => testServer.close(resolve));
+  });
+
+  test('window is hidden when NORI_BROWSER_HEADLESS is set', async () => {
+    const isVisible = await electronApp.evaluate(({ BrowserWindow }) => {
+      return BrowserWindow.getAllWindows()[0].isVisible();
+    });
+    expect(isVisible).toBe(false);
   });
 
   test('window opens with sidebar, terminal, toolbar, and URL bar', async () => {
@@ -321,6 +329,12 @@ test.describe('Nori Browser', () => {
         height: window.innerHeight,
       }));
 
+      await bw.evaluate((win) => {
+        return new Promise(resolve => {
+          win.once('show', () => setTimeout(resolve, 200));
+          win.show();
+        });
+      });
       await bw.evaluate((win) => win.maximize());
 
       await expect.poll(async () => {
@@ -338,6 +352,7 @@ test.describe('Nori Browser', () => {
       await bw.evaluate((win) => {
         win.unmaximize();
         win.setSize(1400, 900);
+        win.hide();
       });
     }
   });
@@ -430,6 +445,7 @@ test.describe('Nori Browser Tabs', () => {
         NORI_BROWSER_SHELL: '/bin/bash',
         NORI_BROWSER_CDP_PORT: String(CDP_PORT + 10),
         NORI_BROWSER_CONTROL_PORT: String(CONTROL_PORT + 10),
+        NORI_BROWSER_HEADLESS: '1',
       },
     });
 
@@ -882,6 +898,7 @@ test.describe('Nori Browser Tab Pinning', () => {
         NORI_BROWSER_SHELL: '/bin/bash',
         NORI_BROWSER_CDP_PORT: String(CDP_PORT + 20),
         NORI_BROWSER_CONTROL_PORT: String(CONTROL_PORT + 20),
+        NORI_BROWSER_HEADLESS: '1',
       },
     });
 
@@ -1410,6 +1427,7 @@ test.describe('Nori Browser Tab Favicons & Loading', () => {
         NORI_BROWSER_SHELL: '/bin/bash',
         NORI_BROWSER_CDP_PORT: String(CDP_PORT + 30),
         NORI_BROWSER_CONTROL_PORT: String(CONTROL_PORT + 30),
+        NORI_BROWSER_HEADLESS: '1',
       },
     });
 
@@ -1579,6 +1597,7 @@ test.describe('Nori Browser Search', () => {
         NORI_BROWSER_SHELL: '/bin/bash',
         NORI_BROWSER_CDP_PORT: String(CDP_PORT + 40),
         NORI_BROWSER_CONTROL_PORT: String(CONTROL_PORT + 40),
+        NORI_BROWSER_HEADLESS: '1',
       },
     });
 
