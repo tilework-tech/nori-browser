@@ -1554,3 +1554,115 @@ test.describe('Nori Browser Tab Favicons & Loading', () => {
     await window.waitForFunction(() => document.querySelectorAll('#tab-bar .tab.pinned').length === 0, { timeout: 5000 });
   });
 });
+
+test.describe('Nori Browser Search', () => {
+  let electronApp;
+  let window;
+
+  let testServer;
+  let testServerPort;
+
+  test.beforeAll(async () => {
+    testServer = http.createServer((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end('<html><head><title>Test</title></head><body><h1>Test</h1></body></html>');
+    });
+    await new Promise((resolve) => {
+      testServer.listen(0, '127.0.0.1', resolve);
+    });
+    testServerPort = testServer.address().port;
+
+    electronApp = await electron.launch({
+      args: [path.join(APP_PATH, 'main.js')],
+      env: {
+        ...process.env,
+        NORI_BROWSER_SHELL: '/bin/bash',
+        NORI_BROWSER_CDP_PORT: String(CDP_PORT + 40),
+        NORI_BROWSER_CONTROL_PORT: String(CONTROL_PORT + 40),
+      },
+    });
+
+    await electronApp.firstWindow();
+    for (let i = 0; i < 30; i++) {
+      const windows = electronApp.windows();
+      const renderer = windows.find((w) => w.url().includes('index.html'));
+      if (renderer) {
+        window = renderer;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
+    await window.waitForSelector('#tab-bar', { timeout: 10000 });
+  });
+
+  test.afterAll(async () => {
+    if (electronApp) {
+      await electronApp.close();
+      electronApp = null;
+    }
+    if (testServer) await new Promise((resolve) => testServer.close(resolve));
+  });
+
+  test('typing a single-word search query navigates to Google search', async () => {
+    const urlBar = await window.$('#url-bar');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill('cats');
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => await urlBar.inputValue(), { timeout: 15000 })
+      .toContain('google.com/search?q=cats');
+  });
+
+  test('typing a multi-word search query navigates to Google search', async () => {
+    const urlBar = await window.$('#url-bar');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill('best pizza near me');
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => {
+      const val = await urlBar.inputValue();
+      return val.includes('google.com/search') && val.includes('near');
+    }, { timeout: 15000 }).toBe(true);
+  });
+
+  test('typing a full URL with protocol navigates directly', async () => {
+    const urlBar = await window.$('#url-bar');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill(`http://127.0.0.1:${testServerPort}`);
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => await urlBar.inputValue(), { timeout: 10000 })
+      .toContain(`127.0.0.1:${testServerPort}`);
+  });
+
+  test('typing an IP address without protocol navigates as URL', async () => {
+    const urlBar = await window.$('#url-bar');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill(`127.0.0.1:${testServerPort}/ip-test`);
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => {
+      const val = await urlBar.inputValue();
+      return val.startsWith('http://') && val.includes('/ip-test');
+    }, { timeout: 10000 }).toBe(true);
+  });
+
+  test('typing a search query with special characters navigates to Google search', async () => {
+    const urlBar = await window.$('#url-bar');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill('cats & dogs');
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => {
+      const val = await urlBar.inputValue();
+      return val.includes('google.com/search') && val.includes('dogs');
+    }, { timeout: 15000 }).toBe(true);
+  });
+
+  test('typing localhost with port navigates as URL not search', async () => {
+    const urlBar = await window.$('#url-bar');
+    await urlBar.click({ clickCount: 3 });
+    await urlBar.fill(`localhost:${testServerPort}/localhost-test`);
+    await window.keyboard.press('Enter');
+    await expect.poll(async () => {
+      const val = await urlBar.inputValue();
+      return val.startsWith('http://') && val.includes('/localhost-test');
+    }, { timeout: 10000 }).toBe(true);
+  });
+});
