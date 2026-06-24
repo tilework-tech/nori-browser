@@ -2,7 +2,7 @@
 
 Agentic browser automation that actually works.
 
-Nori Browser is an Electron-based web browser with an integrated AI terminal sidebar. It pairs a full-featured browser with a Claude Code agent that can script the browser in real time through Playwright over CDP. You browse the web normally; when you need the agent to do something, you tell it in the sidebar and it acts on the same browser session you're looking at.
+Nori Browser is an Electron-based web browser with an integrated AI terminal sidebar. It pairs a full-featured browser with the [nori CLI](https://www.npmjs.com/package/nori-ai-cli) driving a Claude Code agent that can script the browser in real time through Playwright over CDP. You browse the web normally; when you need the agent to do something, you tell it in the sidebar and it acts on the same browser session you're looking at.
 
 ## How It Works
 
@@ -13,16 +13,16 @@ Nori Browser is an Electron-based web browser with an integrated AI terminal sid
 │ │  AI Terminal  │  │      Web Content          │ │
 │ │  (Sidebar)   │  │      (Chromium)           │ │
 │ │              │  │                           │ │
-│ │  Claude Code │  │  ← controlled via CDP →   │ │
-│ │  or shell    │  │                           │ │
+│ │  nori +      │  │  ← controlled via CDP →   │ │
+│ │  Claude Code │  │                           │ │
 │ └──────────────┘  └───────────────────────────┘ │
 └─────────────────────────────────────────────────┘
 ```
 
 1. **Electron app** renders a Chromium browser with tabs, omnibar, back/forward, find-in-page, zoom, downloads, and all standard browser chrome.
-2. **Terminal sidebar** spawns a shell process (defaults to Claude Code with `--dangerously-skip-permissions` if the `claude` CLI is installed, otherwise your system shell).
+2. **Terminal sidebar** spawns the bundled `nori` CLI driving the `claude-code` agent (`nori -a claude-code -C <launch-folder> --dangerously-bypass-approvals-and-sandbox --skip-welcome --skip-trust-directory ...`). nori runs against an isolated config home (`~/.nori-browser`, with auto-worktree disabled) so it stays in the folder the browser launched from and out of your personal `~/.nori` config. If no `nori` binary can be found it falls back to your system shell.
 3. **CDP bridge** exposes the browser on a configurable port (default `19222`). The agent connects via Playwright's `connectOverCDP` and scripts the same pages you see.
-4. **System prompt** is auto-generated at launch with the CDP port, bridge commands, and network etiquette guidelines baked in. The agent knows how to drive the browser from the moment it starts.
+4. **Browser instructions** are injected as nori's initial prompt at launch, with the CDP port, bridge commands, and network etiquette guidelines baked in. The agent knows how to drive the browser from the moment it starts.
 
 The agent does not use MCP tools or structured tool calls. It scripts the browser directly with Playwright, the same way you'd write a test or automation script. This makes it transparent, composable, and debuggable.
 
@@ -43,7 +43,7 @@ npm test
 
 - Node.js 18+
 - A display server (or set `NORI_BROWSER_HEADLESS=1` for headless mode)
-- Optional: [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed globally for the AI sidebar
+- The AI sidebar uses the [`nori-ai-cli`](https://www.npmjs.com/package/nori-ai-cli) package, installed automatically via `npm install`. It drives the `claude-code` agent, so a working Claude Code login/credential is needed for the agent to run.
 
 ## Environment Variables
 
@@ -51,7 +51,8 @@ npm test
 |----------|---------|-------------|
 | `NORI_BROWSER_CDP_PORT` | `19222` | Chrome DevTools Protocol port |
 | `NORI_BROWSER_CONTROL_PORT` | `0` (disabled) | TCP port for external terminal control |
-| `NORI_BROWSER_SHELL` | auto-detect | Override the sidebar shell (e.g. `/bin/bash`) |
+| `NORI_BROWSER_SHELL` | auto-detect | Override the sidebar command with a bare shell (e.g. `/bin/bash`), bypassing the nori launch |
+| `NORI_BROWSER_NORI_BIN` | bundled `nori` | Override the path to the `nori` binary (test seam) |
 | `NORI_BROWSER_HEADLESS` | unset | Set to `1` to hide the window (useful for testing) |
 | `NORI_BROWSER_PROFILE_DIR` | Chrome's user data | Custom profile directory (empty string = no profile) |
 

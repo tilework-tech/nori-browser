@@ -223,44 +223,6 @@ test.describe('Nori Browser', () => {
     }
   });
 
-  test('session directory with system prompt is created on startup', async () => {
-    const socket = await connectControl();
-    try {
-      const dirOutput = await sendAndWait(socket, 'echo SESSION_DIR=$NORI_SESSION_DIR\n', 'SESSION_DIR=/', 5000);
-      const match = dirOutput.match(/SESSION_DIR=(\/[^\s\r\n]+)/);
-      expect(match).toBeTruthy();
-      const sessionDir = match[1];
-
-      const existsOutput = await sendAndWait(socket, `test -f "$NORI_SESSION_DIR/system-prompt.txt" && echo PROMPT_EXISTS\n`, 'PROMPT_EXISTS', 5000);
-      expect(existsOutput).toContain('PROMPT_EXISTS');
-    } finally {
-      socket.destroy();
-    }
-  });
-
-  test('system prompt contains correct CDP port and bridge path', async () => {
-    const socket = await connectControl();
-    try {
-      const output = await sendAndWait(socket, 'cat "$NORI_SESSION_DIR/system-prompt.txt"\n', String(CDP_PORT), 5000);
-      expect(output).toContain(String(CDP_PORT));
-      expect(output).toContain('playwright-bridge.js');
-    } finally {
-      socket.destroy();
-    }
-  });
-
-  test('system prompt contains network etiquette instructions', async () => {
-    const socket = await connectControl();
-    try {
-      const output = await sendAndWait(socket, 'cat "$NORI_SESSION_DIR/system-prompt.txt"\n', 'random delay', 5000);
-      expect(output).toContain('random delay');
-      expect(output).toContain('exponential backoff');
-      expect(output).toContain('robots.txt');
-    } finally {
-      socket.destroy();
-    }
-  });
-
   test('resizing window updates the rendered browser page dimensions', async () => {
     const urlBar = await window.$('#url-bar');
     await urlBar.click({ clickCount: 3 });
@@ -392,23 +354,6 @@ test.describe('Nori Browser', () => {
     expect(dividerVisible).toBe(true);
   });
 
-  test('session directory is cleaned up on exit', async () => {
-    const socket = await connectControl();
-    let sessionDir;
-    try {
-      const dirOutput = await sendAndWait(socket, 'echo SESSION_DIR=$NORI_SESSION_DIR\n', 'SESSION_DIR=/', 5000);
-      const match = dirOutput.match(/SESSION_DIR=(\/[^\s\r\n]+)/);
-      expect(match).toBeTruthy();
-      sessionDir = match[1];
-    } finally {
-      socket.destroy();
-    }
-
-    await electronApp.close();
-    electronApp = null;
-
-    expect(fs.existsSync(sessionDir)).toBe(false);
-  });
 });
 
 test.describe('Nori Browser Tabs', () => {
@@ -2491,3 +2436,208 @@ test.describe('Nori Browser Omnibar No Data', () => {
     }, { timeout: 15000 }).toBe(true);
   });
 });
+
+test.describe('Nori CLI spawn contract', () => {
+  const os = require('os');
+  let electronApp;
+  let stubDir;
+  let recordFile;
+  const STUB_CDP = CDP_PORT + 90;
+  const STUB_CONTROL = CONTROL_PORT + 90;
+
+  test.beforeAll(async () => {
+    stubDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nori-stub-'));
+    recordFile = path.join(stubDir, 'record.txt');
+    const stubPath = path.join(stubDir, 'nori');
+    fs.writeFileSync(
+      stubPath,
+      `#!/bin/bash\n` +
+        `{\n` +
+        `  echo "CWD=$(pwd)"\n` +
+        `  echo "CDP=$NORI_BROWSER_CDP_PORT"\n` +
+        `  echo "PW=$PLAYWRIGHT_CDP_URL"\n` +
+        `  echo "NORIHOME=$NORI_HOME"\n` +
+        `  echo "WORKTREE_CFG=$(cat "$NORI_HOME/config.toml" 2>/dev/null | tr -d '\\n')"\n` +
+        `  for a in "$@"; do printf 'ARG<<%s>>\\n' "$a"; done\n` +
+        `} > ${JSON.stringify(recordFile)}\n` +
+        `exec /bin/cat\n`,
+    );
+    fs.chmodSync(stubPath, 0o755);
+
+    electronApp = await electron.launch({
+      args: [path.join(APP_PATH, 'main.js')],
+      env: {
+        ...process.env,
+        NORI_BROWSER_SHELL: '',
+        NORI_BROWSER_NORI_BIN: stubPath,
+        NORI_BROWSER_CDP_PORT: String(STUB_CDP),
+        NORI_BROWSER_CONTROL_PORT: String(STUB_CONTROL),
+        NORI_BROWSER_HEADLESS: '1',
+        NORI_BROWSER_PROFILE_DIR: '',
+      },
+    });
+    await electronApp.firstWindow();
+  });
+
+  test.afterAll(async () => {
+    if (electronApp) {
+      await electronApp.close();
+      electronApp = null;
+    }
+    if (stubDir) fs.rmSync(stubDir, { recursive: true, force: true });
+  });
+
+  test('launches nori with claude-code backend in the launch folder and injects browser instructions', async () => {
+    // The stub nori records how the app invoked it as soon as the terminal starts.
+    for (let i = 0; i < 40 && !fs.existsSync(recordFile); i++) {
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    expect(fs.existsSync(recordFile)).toBe(true);
+    const record = fs.readFileSync(recordFile, 'utf-8');
+    expect(record).toContain('CWD=');
+
+    // Opens in whatever folder the browser started in.
+    const cwd = record.match(/CWD=(.*)/)[1];
+    expect(record).toContain(`ARG<<-C>>\nARG<<${cwd}>>`);
+
+    // Drives the claude-code agent through nori.
+    expect(record).toContain('ARG<<-a>>\nARG<<claude-code>>');
+
+    // Full autonomy, no blocking first-run prompts.
+    expect(record).toContain('ARG<<--dangerously-bypass-approvals-and-sandbox>>');
+    expect(record).toContain('ARG<<--skip-welcome>>');
+    expect(record).toContain('ARG<<--skip-trust-directory>>');
+
+    // Browser-driving instructions are delivered to the agent as the initial prompt
+    // positional (the stub records argv only, so these strings must be in argv).
+    expect(record).toContain('playwright-bridge.js');
+    expect(record).toContain(`CDP Port: ${STUB_CDP}`);
+    expect(record).toContain('random delay');
+
+    // The CDP port reaches nori's environment so the agent can connect to this browser.
+    expect(record).toContain(`CDP=${STUB_CDP}`);
+
+    // Runs in an isolated nori home (not the user's ~/.nori) with auto_worktree
+    // disabled, so the agent stays in the launch folder instead of a new worktree.
+    const noriHome = record.match(/NORIHOME=(.*)/)[1];
+    expect(noriHome).not.toBe('');
+    expect(noriHome).not.toBe(path.join(os.homedir(), '.nori'));
+    expect(noriHome).not.toBe(path.join(os.homedir(), '.nori', 'cli'));
+    expect(record).toMatch(/WORKTREE_CFG=.*auto_worktree.*off/);
+  });
+});
+
+test.describe('Nori CLI live e2e', () => {
+  test.describe.configure({ timeout: 240000 });
+  let electronApp;
+  let liveServer;
+  let liveServerPort;
+  const LIVE_CDP = CDP_PORT + 100;
+  const LIVE_CONTROL = CONTROL_PORT + 100;
+
+  test.beforeAll(async () => {
+    liveServer = http.createServer((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end('<html><head><title>Page A</title></head><body><h1>Hello from Page A</h1></body></html>');
+    });
+    await new Promise((resolve) => liveServer.listen(0, '127.0.0.1', resolve));
+    liveServerPort = liveServer.address().port;
+
+    electronApp = await electron.launch({
+      args: [path.join(APP_PATH, 'main.js')],
+      env: {
+        ...process.env,
+        NORI_BROWSER_CDP_PORT: String(LIVE_CDP),
+        NORI_BROWSER_CONTROL_PORT: String(LIVE_CONTROL),
+        NORI_BROWSER_HEADLESS: '1',
+        NORI_BROWSER_PROFILE_DIR: '',
+      },
+    });
+    await electronApp.firstWindow();
+    for (let i = 0; i < 30; i++) {
+      const renderer = electronApp.windows().find((w) => w.url().includes('index.html'));
+      if (renderer) break;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  });
+
+  test.afterAll(async () => {
+    if (electronApp) {
+      await electronApp.close();
+      electronApp = null;
+    }
+    if (liveServer) await new Promise((resolve) => liveServer.close(resolve));
+  });
+
+  test('asking the nori (claude-code) session to modify the page changes the DOM', async () => {
+    test.setTimeout(240000);
+    const bridgePath = path.join(APP_PATH, 'playwright-bridge.js');
+
+    // Load a page with a known title.
+    const cdp = await chromium.connectOverCDP(`http://localhost:${LIVE_CDP}`);
+    const findPage = () => cdp.contexts().flatMap((c) => c.pages()).find((p) => !p.url().startsWith('file://'));
+    let page = findPage();
+    await page.goto(`http://127.0.0.1:${liveServerPort}/`, { waitUntil: 'domcontentloaded' });
+    expect(await page.title()).toBe('Page A');
+
+    // Wait for nori to boot and finish processing its initial instructions turn.
+    const control = await waitForControlPort(LIVE_CONTROL);
+    await waitForFirstData(control, 90000);
+    await new Promise((r) => setTimeout(r, 40000));
+
+    // Ask it to modify the page. Send the message text, then Enter as a SEPARATE
+    // write: nori has bracketed-paste enabled, so a trailing \r in the same write
+    // is swallowed as pasted text instead of submitting the message.
+    control.write(
+      `Use the browser bridge to modify the current page. Run exactly this command in your shell: ` +
+        `node "${bridgePath}" eval "document.title = 'NORI_LIVE_OK'"`,
+    );
+    await new Promise((r) => setTimeout(r, 1500));
+    control.write('\r');
+
+    try {
+      await expect
+        .poll(async () => {
+          const p = findPage();
+          if (!p) return null;
+          return await p.title().catch(() => null);
+        }, { timeout: 170000, intervals: [3000] })
+        .toBe('NORI_LIVE_OK');
+    } finally {
+      control.destroy();
+      await cdp.close();
+    }
+  });
+});
+
+function waitForControlPort(port, attempts = 40) {
+  return new Promise(async (resolve, reject) => {
+    for (let i = 0; i < attempts; i++) {
+      try {
+        const socket = await new Promise((res, rej) => {
+          const s = net.connect(port, '127.0.0.1', () => res(s));
+          s.on('error', rej);
+        });
+        return resolve(socket);
+      } catch {
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    reject(new Error(`control port ${port} never opened`));
+  });
+}
+
+function waitForFirstData(socket, timeout) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      socket.removeListener('data', onData);
+      resolve();
+    }, timeout);
+    function onData() {
+      clearTimeout(timer);
+      socket.removeListener('data', onData);
+      resolve();
+    }
+    socket.on('data', onData);
+  });
+}

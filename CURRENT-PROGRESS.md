@@ -8,7 +8,7 @@
 - CDP (Chrome DevTools Protocol) exposure on configurable port
 - playwright-bridge.js CLI for agent-driven browser scripting
 - Control socket server for external terminal I/O
-- Session directory with system prompt for Claude Code integration
+- Terminal sidebar launches the nori CLI driving the claude-code agent (isolated `NORI_HOME` with auto-worktree disabled, browser instructions injected as nori's initial prompt)
 - Multi-tab support with Chrome-like behavior:
   - Tab bar UI with tab titles, close buttons, active tab highlighting
   - Tab creation, closing, switching via UI buttons and IPC
