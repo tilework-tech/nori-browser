@@ -74,7 +74,6 @@ let controlSockets = new Set();
 let sidebarWidth = 400;
 let savedSidebarWidth = 400;
 let sidebarVisible = true;
-let sessionDir;
 const TOOLBAR_HEIGHT = 48;
 const TAB_BAR_HEIGHT = 36;
 let omnibarOpen = false;
@@ -701,10 +700,9 @@ function handleToggleSidebar() {
   mainWindow.webContents.send('sidebar-toggled', sidebarVisible);
 }
 
-function createSessionDir() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nori-browser-'));
+function buildBrowserPrompt() {
   const bridgePath = path.join(__dirname, 'playwright-bridge.js');
-  const prompt = `You are connected to a browser via Chrome DevTools Protocol.
+  return `You are connected to a browser via Chrome DevTools Protocol.
 
 CDP Port: ${CDP_PORT}
 CDP URL: http://localhost:${CDP_PORT}
@@ -752,34 +750,38 @@ Network etiquette — be a good steward of the internet:
 - Check robots.txt before scraping or crawling a new domain.
 These rules do not apply to localhost or private network addresses.
 `;
-
-  fs.writeFileSync(path.join(dir, 'system-prompt.txt'), prompt);
-  return dir;
 }
 
-function cleanupSessionDir() {
-  if (sessionDir) {
-    fs.rmSync(sessionDir, { recursive: true, force: true });
-    sessionDir = null;
+// Isolate the nori session from the user's personal ~/.nori config so the browser
+// agent runs in a clean environment (mirrors the old claude `--setting-sources ''`).
+// Crucially this disables auto_worktree, which would otherwise pull the agent into a
+// separate git worktree instead of the folder the browser started in.
+function ensureNoriHome() {
+  const home = path.join(os.homedir(), '.nori-browser');
+  fs.mkdirSync(home, { recursive: true });
+  const config = path.join(home, 'config.toml');
+  if (!fs.existsSync(config)) {
+    fs.writeFileSync(config, '[tui]\nauto_worktree = "off"\n');
   }
+  return home;
 }
 
 function startTerminal() {
   if (ptyProcess) return;
-  sessionDir = createSessionDir();
-  const { command, args } = resolveShell(sessionDir);
+  const cwd = process.cwd();
+  const { command, args } = resolveShell(buildBrowserPrompt(), cwd);
   ptyProcess = pty.spawn(command, args, {
     name: 'xterm-256color',
     cols: 80,
     rows: 24,
-    cwd: process.env.HOME || process.cwd(),
+    cwd,
     env: {
       ...process.env,
       NORI_BROWSER_CDP_PORT: String(CDP_PORT),
       PLAYWRIGHT_CDP_URL: `http://localhost:${CDP_PORT}`,
       NODE_PATH: [path.join(__dirname, 'node_modules'), process.env.NODE_PATH].filter(Boolean).join(path.delimiter),
       NORI_BROWSER_DIR: __dirname,
-      NORI_SESSION_DIR: sessionDir,
+      NORI_HOME: ensureNoriHome(),
     },
   });
 
@@ -823,25 +825,40 @@ function startControlServer() {
   });
 }
 
-function resolveShell(sessionDir) {
-  const envShell = process.env.NORI_BROWSER_SHELL;
-  if (envShell) return { command: envShell, args: [] };
+function resolveNoriBinary() {
+  if (process.env.NORI_BROWSER_NORI_BIN) return process.env.NORI_BROWSER_NORI_BIN;
+
+  const localNori = path.join(__dirname, 'node_modules', '.bin', 'nori');
+  if (fs.existsSync(localNori)) return localNori;
 
   const { execSync } = require('child_process');
   try {
-    const claudePath = execSync('which claude', { encoding: 'utf-8' }).trim();
-    if (claudePath) {
-      return {
-        command: claudePath,
-        args: [
-          '--setting-sources', '',
-          '--settings', JSON.stringify({ claudeMdExcludes: ['**'] }),
-          '--append-system-prompt-file', path.join(sessionDir, 'system-prompt.txt'),
-          '--dangerously-skip-permissions',
-        ],
-      };
-    }
+    const noriPath = execSync('which nori', { encoding: 'utf-8' }).trim();
+    if (noriPath) return noriPath;
   } catch {}
+
+  return null;
+}
+
+function resolveShell(prompt, cwd) {
+  const envShell = process.env.NORI_BROWSER_SHELL;
+  if (envShell) return { command: envShell, args: [] };
+
+  const noriPath = resolveNoriBinary();
+  if (noriPath) {
+    return {
+      command: noriPath,
+      args: [
+        '-a', 'claude-code',
+        '-C', cwd,
+        '--dangerously-bypass-approvals-and-sandbox',
+        '--skip-welcome',
+        '--skip-trust-directory',
+        '-c', 'shell_environment_policy.inherit=all',
+        prompt,
+      ],
+    };
+  }
 
   return { command: process.env.SHELL || '/bin/bash', args: [] };
 }
@@ -1168,15 +1185,10 @@ ipcMain.on('download-show', (_, id) => {
   if (item && item.getSavePath()) shell.showItemInFolder(item.getSavePath());
 });
 
-app.on('before-quit', () => {
-  cleanupSessionDir();
-});
-
 app.on('window-all-closed', () => {
   if (ptyProcess) ptyProcess.kill();
   if (controlServer) controlServer.close();
   for (const socket of controlSockets) socket.destroy();
-  cleanupSessionDir();
   if (cachedHistoryPath) {
     try { fs.unlinkSync(cachedHistoryPath); } catch {}
     try { fs.unlinkSync(cachedHistoryPath + '-wal'); } catch {}
