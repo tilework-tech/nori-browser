@@ -2527,6 +2527,122 @@ test.describe('Nori CLI spawn contract', () => {
   });
 });
 
+test.describe('Nori terminal launch folder', () => {
+  const os = require('os');
+  let electronApp;
+  let stubDir;
+  let recordFile;
+  let chosenDir;
+  const LAUNCH_CDP = CDP_PORT + 110;
+  const LAUNCH_CONTROL = CONTROL_PORT + 110;
+
+  test.beforeAll(async () => {
+    stubDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nori-launch-stub-'));
+    chosenDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'nori-chosen-')));
+    recordFile = path.join(stubDir, 'record.txt');
+    const stubPath = path.join(stubDir, 'nori');
+    fs.writeFileSync(
+      stubPath,
+      `#!/bin/bash\n` +
+        `{\n` +
+        `  echo "CWD=$(pwd)"\n` +
+        `  for a in "$@"; do printf 'ARG<<%s>>\\n' "$a"; done\n` +
+        `} > ${JSON.stringify(recordFile)}\n` +
+        `exec /bin/cat\n`,
+    );
+    fs.chmodSync(stubPath, 0o755);
+
+    electronApp = await electron.launch({
+      args: [path.join(APP_PATH, 'main.js')],
+      env: {
+        ...process.env,
+        NORI_BROWSER_SHELL: '',
+        NORI_BROWSER_NORI_BIN: stubPath,
+        NORI_BROWSER_LAUNCH_DIR: chosenDir,
+        NORI_BROWSER_CDP_PORT: String(LAUNCH_CDP),
+        NORI_BROWSER_CONTROL_PORT: String(LAUNCH_CONTROL),
+        NORI_BROWSER_HEADLESS: '1',
+        NORI_BROWSER_PROFILE_DIR: '',
+      },
+    });
+    await electronApp.firstWindow();
+  });
+
+  test.afterAll(async () => {
+    if (electronApp) {
+      await electronApp.close();
+      electronApp = null;
+    }
+    if (stubDir) fs.rmSync(stubDir, { recursive: true, force: true });
+    if (chosenDir) fs.rmSync(chosenDir, { recursive: true, force: true });
+  });
+
+  test('runs the nori terminal in the folder chosen at startup', async () => {
+    // The stub nori records its working directory and argv as soon as it starts.
+    for (let i = 0; i < 40 && !fs.existsSync(recordFile); i++) {
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    expect(fs.existsSync(recordFile)).toBe(true);
+    const record = fs.readFileSync(recordFile, 'utf-8');
+
+    // The terminal process runs in the chosen folder, not wherever the browser
+    // was launched from.
+    expect(record).toContain(`CWD=${chosenDir}`);
+    // And nori is told to operate in that same folder via -C.
+    expect(record).toContain(`ARG<<-C>>\nARG<<${chosenDir}>>`);
+  });
+});
+
+test.describe('Nori terminal remembers the launch folder', () => {
+  const os = require('os');
+  let electronApp;
+  let chosenDir;
+  let stateDir;
+  let stateFile;
+  const REMEMBER_CDP = CDP_PORT + 120;
+  const REMEMBER_CONTROL = CONTROL_PORT + 120;
+
+  test.beforeAll(async () => {
+    chosenDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'nori-remember-')));
+    stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nori-state-'));
+    stateFile = path.join(stateDir, 'last-folder');
+
+    electronApp = await electron.launch({
+      args: [path.join(APP_PATH, 'main.js')],
+      env: {
+        ...process.env,
+        NORI_BROWSER_SHELL: '/bin/bash',
+        NORI_BROWSER_LAUNCH_DIR: chosenDir,
+        NORI_BROWSER_STATE_FILE: stateFile,
+        NORI_BROWSER_CDP_PORT: String(REMEMBER_CDP),
+        NORI_BROWSER_CONTROL_PORT: String(REMEMBER_CONTROL),
+        NORI_BROWSER_HEADLESS: '1',
+        NORI_BROWSER_PROFILE_DIR: '',
+      },
+    });
+    await electronApp.firstWindow();
+  });
+
+  test.afterAll(async () => {
+    if (electronApp) {
+      await electronApp.close();
+      electronApp = null;
+    }
+    if (chosenDir) fs.rmSync(chosenDir, { recursive: true, force: true });
+    if (stateDir) fs.rmSync(stateDir, { recursive: true, force: true });
+  });
+
+  test('persists the chosen folder so the next launch can default to it', async () => {
+    // After opening in a folder, that folder is remembered on disk so the next
+    // startup folder prompt can default to it.
+    for (let i = 0; i < 40 && !fs.existsSync(stateFile); i++) {
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    expect(fs.existsSync(stateFile)).toBe(true);
+    expect(fs.readFileSync(stateFile, 'utf-8').trim()).toBe(chosenDir);
+  });
+});
+
 test.describe('Nori CLI live e2e', () => {
   test.describe.configure({ timeout: 240000 });
   let electronApp;

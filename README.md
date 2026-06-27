@@ -20,7 +20,7 @@ Nori Browser is an Electron-based web browser with an integrated AI terminal sid
 ```
 
 1. **Electron app** renders a Chromium browser with tabs, omnibar, back/forward, find-in-page, zoom, downloads, and all standard browser chrome.
-2. **Terminal sidebar** spawns the bundled `nori` CLI driving the `claude-code` agent (`nori -a claude-code -C <launch-folder> --dangerously-bypass-approvals-and-sandbox --skip-welcome --skip-trust-directory ...`). nori runs against an isolated config home (`~/.nori-browser`, with auto-worktree disabled) so it stays in the folder the browser launched from and out of your personal `~/.nori` config. If no `nori` binary can be found it falls back to your system shell.
+2. **Terminal sidebar** spawns the bundled `nori` CLI driving the `claude-code` agent (`nori -a claude-code -C <launch-folder> --dangerously-bypass-approvals-and-sandbox --skip-welcome --skip-trust-directory ...`). At startup the app asks you which folder to run in via a native directory picker, runs the terminal/agent there, and remembers it so the next launch defaults to the same folder. nori runs against an isolated config home (`~/.nori-browser`, with auto-worktree disabled) so it stays in the chosen folder and out of your personal `~/.nori` config. If no `nori` binary can be found it falls back to your system shell.
 3. **CDP bridge** exposes the browser on a configurable port (default `19222`). The agent connects via Playwright's `connectOverCDP` and scripts the same pages you see.
 4. **Browser instructions** are injected as nori's initial prompt at launch, with the CDP port, bridge commands, and network etiquette guidelines baked in. The agent knows how to drive the browser from the moment it starts.
 
@@ -55,6 +55,8 @@ npm test
 | `NORI_BROWSER_NORI_BIN` | bundled `nori` | Override the path to the `nori` binary (test seam) |
 | `NORI_BROWSER_HEADLESS` | unset | Set to `1` to hide the window (useful for testing) |
 | `NORI_BROWSER_PROFILE_DIR` | Chrome's user data | Custom profile directory (empty string = no profile) |
+| `NORI_BROWSER_LAUNCH_DIR` | startup picker | Folder to run the terminal/agent in, skipping the startup directory prompt |
+| `NORI_BROWSER_STATE_FILE` | `~/.nori-browser/last-folder` | Where the last-chosen launch folder is remembered for the next startup |
 
 ## Example Uses
 
