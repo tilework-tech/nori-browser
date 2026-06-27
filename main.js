@@ -69,6 +69,7 @@ if (profileDir) {
 
 let mainWindow;
 let ptyProcess;
+let launchDir = null;
 let controlServer;
 let controlSockets = new Set();
 let sidebarWidth = 400;
@@ -90,7 +91,8 @@ let downloads = new Map();
 let nextDownloadId = 1;
 let lastFindText = '';
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await resolveLaunchDir();
   createWindow();
 });
 
@@ -755,7 +757,7 @@ These rules do not apply to localhost or private network addresses.
 // Isolate the nori session from the user's personal ~/.nori config so the browser
 // agent runs in a clean environment (mirrors the old claude `--setting-sources ''`).
 // Crucially this disables auto_worktree, which would otherwise pull the agent into a
-// separate git worktree instead of the folder the browser started in.
+// separate git worktree instead of the folder the terminal was launched in.
 function ensureNoriHome() {
   const home = path.join(os.homedir(), '.nori-browser');
   fs.mkdirSync(home, { recursive: true });
@@ -766,9 +768,60 @@ function ensureNoriHome() {
   return home;
 }
 
+// Where the last chosen folder is remembered so the startup picker can default
+// to it next time. Lives alongside the isolated nori-browser config home.
+function lastFolderStatePath() {
+  return process.env.NORI_BROWSER_STATE_FILE || path.join(os.homedir(), '.nori-browser', 'last-folder');
+}
+
+function readLastFolder() {
+  try {
+    const dir = fs.readFileSync(lastFolderStatePath(), 'utf-8').trim();
+    if (dir && fs.statSync(dir).isDirectory()) return dir;
+  } catch {}
+  return null;
+}
+
+function rememberLastFolder(dir) {
+  // Best-effort: a failed write to remember the folder must never block startup.
+  try {
+    const file = lastFolderStatePath();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, dir);
+  } catch {}
+}
+
+// Ask the user which folder to run the nori terminal in, before the browser
+// window opens. Falls back to the launch directory when there is no UI to prompt
+// in (headless/automation) or when the user dismisses the picker.
+async function resolveLaunchDir() {
+  const envDir = process.env.NORI_BROWSER_LAUNCH_DIR;
+  if (envDir) {
+    launchDir = envDir;
+    rememberLastFolder(envDir);
+    return;
+  }
+  if (process.env.NORI_BROWSER_HEADLESS) {
+    launchDir = process.cwd();
+    return;
+  }
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    title: 'Choose a folder for the Nori terminal',
+    buttonLabel: 'Open',
+    defaultPath: readLastFolder() || process.cwd(),
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (canceled || filePaths.length === 0) {
+    launchDir = process.cwd();
+    return;
+  }
+  launchDir = filePaths[0];
+  rememberLastFolder(launchDir);
+}
+
 function startTerminal() {
   if (ptyProcess) return;
-  const cwd = process.cwd();
+  const cwd = launchDir || process.cwd();
   const { command, args } = resolveShell(buildBrowserPrompt(), cwd);
   ptyProcess = pty.spawn(command, args, {
     name: 'xterm-256color',
